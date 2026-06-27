@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 req = requests.get(
-    "https://api.le-systeme-solaire.net/rest/bodies?data=id%2Cname%2CsemimajorAxis%2Ceccentricity",
+    "https://api.le-systeme-solaire.net/rest/bodies?data=id%2Cname%2CsemimajorAxis%2Ceccentricity%2Cperihelion%2Caphelion",
     headers={"Authorization": f'Bearer {os.getenv("L_OPEN_DATA")}'},
 )
 
