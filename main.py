@@ -1,0 +1,20 @@
+import os
+import json
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+req = requests.get(
+    "https://api.le-systeme-solaire.net/rest/bodies?data=id%2Cname%2CsemimajorAxis%2Ceccentricity",
+    headers={"Authorization": f'Bearer {os.getenv("L_OPEN_DATA")}'},
+)
+
+data = req.json()
+
+for i in data["bodies"]:
+    i["apogee"] = i["semimajorAxis"] * (1 + i["eccentricity"])
+    i["perigee"] = i["semimajorAxis"] * (1 - i["eccentricity"])
+
+with open("data.json", "w") as f:
+    json.dump(data, f)
