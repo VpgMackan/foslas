@@ -69,7 +69,7 @@ def hohmann_delta_v(r1, r2):
     a_t = (r1 + r2) / 2
     v_dep = np.sqrt(GM_SUN * (2 / r1 - 1 / a_t)) - v1_circ
     v_arr = v2_circ - np.sqrt(GM_SUN * (2 / r2 - 1 / a_t))
-    return v_dep, v_arr, v_dep + v_arr
+    return abs(v_dep), abs(v_arr), abs(v_dep) + abs(v_arr)
 
 
 def transfer_time(r1, r2, factor):
@@ -90,13 +90,17 @@ def transfer_time(r1, r2, factor):
         Transfer time in days.
     """
     a = ((r1 + r2) / 2) * factor
-    e = 1 - r1 / a
+    e = abs(1 - r1 / a)
     if e < 1e-10:
         return 0.0
-    cos_E = np.clip((1 - r2 / a) / e, -1.0, 1.0)
-    E = np.arccos(cos_E)
-    M = E - e * np.sin(E)
-    return M * np.sqrt(a ** 3 / GM_SUN) / SEC_TO_DAY
+    cos_E1 = np.clip((1 - r1 / a) / e, -1.0, 1.0)
+    E1 = np.arccos(cos_E1)
+    cos_E2 = np.clip((1 - r2 / a) / e, -1.0, 1.0)
+    E2 = np.arccos(cos_E2)
+    M1 = E1 - e * np.sin(E1)
+    M2 = E2 - e * np.sin(E2)
+    dM = abs(M2 - M1)
+    return dM * np.sqrt(a ** 3 / GM_SUN) / SEC_TO_DAY
 
 
 def _calc_dv_for_factor(r1, r2, factor):
@@ -149,17 +153,23 @@ def find_factor_for_dv(r1, r2, target_dv, max_factor=50.0):
         (factor, actual_delta_v) where factor scales the Hohmann
         semi-major axis and actual_delta_v is the delta-V consumed.
     """
-    dv_hoh, _, _ = hohmann_delta_v(r1, r2)
-    if target_dv < dv_hoh:
-        return 1.0, dv_hoh
+    _, _, dv_total = hohmann_delta_v(r1, r2)
+    if target_dv < dv_total:
+        return 1.0, dv_total
+
+    inward = r2 < r1
 
     def residual(factor):
         return _calc_dv_for_factor(r1, r2, factor) - target_dv
 
     try:
-        factor = brentq(residual, 1.0, max_factor, xtol=1e-10, rtol=1e-12)
+        if inward:
+            min_factor = r1 / (r1 + r2) * 1.001
+            factor = brentq(residual, min_factor, 1.0, xtol=1e-10, rtol=1e-12)
+        else:
+            factor = brentq(residual, 1.0, max_factor, xtol=1e-10, rtol=1e-12)
     except ValueError:
-        factor = max_factor
+        factor = 1.0 if inward else max_factor
 
     return factor, _calc_dv_for_factor(r1, r2, factor)
 
