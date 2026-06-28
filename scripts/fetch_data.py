@@ -1,3 +1,9 @@
+"""Fetch celestial body data from the Solar System API.
+
+Downloads orbital parameters for solar system bodies and saves them
+to data/data.json. Requires a valid API token in the .env file.
+"""
+
 import os
 import sys
 import json

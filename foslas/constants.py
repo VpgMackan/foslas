@@ -1,3 +1,5 @@
+"""Physical constants and unit conversion factors used throughout the library."""
+
 G = 6.67430e-11
 M_SUN = 1.98847e30
 GM_SUN = G * M_SUN

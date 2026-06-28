@@ -1,3 +1,9 @@
+"""Orbital mechanics functions for interplanetary transfers.
+
+Provides Hohmann transfer calculations, energy factor search for faster
+transfers, and full trajectory computation using Lambert's solver.
+"""
+
 import numpy as np
 from scipy.optimize import brentq
 
@@ -7,6 +13,25 @@ from .integrator import integrate_trajectory
 
 
 class OrbitalBody:
+    """Represents a celestial body with an elliptical orbit.
+
+    Parameters
+    ----------
+    aphelion_km : float
+        Aphelion distance in kilometers.
+    perihelion_km : float
+        Perihelion distance in kilometers.
+
+    Attributes
+    ----------
+    aphelion : float
+        Aphelion distance in meters.
+    perihelion : float
+        Perihelion distance in meters.
+    sma : float
+        Semi-major axis in meters.
+    """
+
     def __init__(self, aphelion_km, perihelion_km):
         self.aphelion = aphelion_km * KM_TO_M
         self.perihelion = perihelion_km * KM_TO_M
@@ -14,10 +39,31 @@ class OrbitalBody:
 
     @property
     def eccentricity(self):
+        """Compute orbital eccentricity from aphelion and perihelion.
+
+        Returns
+        -------
+        float
+            Eccentricity (0 for circular, 0-1 for elliptical).
+        """
         return (self.aphelion - self.perihelion) / (self.aphelion + self.perihelion)
 
 
 def hohmann_delta_v(r1, r2):
+    """Compute delta-V for a Hohmann transfer between two circular orbits.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+
+    Returns
+    -------
+    tuple of float
+        (departure_burn, arrival_burn, total_delta_v) in m/s.
+    """
     v1_circ = np.sqrt(GM_SUN / r1)
     v2_circ = np.sqrt(GM_SUN / r2)
     a_t = (r1 + r2) / 2
@@ -27,6 +73,22 @@ def hohmann_delta_v(r1, r2):
 
 
 def transfer_time(r1, r2, factor):
+    """Compute transfer time for a scaled transfer orbit.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    factor : float
+        Energy factor scaling the semi-major axis (1.0 = Hohmann).
+
+    Returns
+    -------
+    float
+        Transfer time in days.
+    """
     a = ((r1 + r2) / 2) * factor
     e = 1 - r1 / a
     if e < 1e-10:
@@ -38,6 +100,22 @@ def transfer_time(r1, r2, factor):
 
 
 def _calc_dv_for_factor(r1, r2, factor):
+    """Compute total delta-V for a transfer orbit scaled by a factor.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    factor : float
+        Energy factor scaling the semi-major axis.
+
+    Returns
+    -------
+    float
+        Total delta-V in m/s.
+    """
     a = ((r1 + r2) / 2) * factor
     v1_circ = np.sqrt(GM_SUN / r1)
     v2_circ = np.sqrt(GM_SUN / r2)
@@ -52,6 +130,25 @@ def _calc_dv_for_factor(r1, r2, factor):
 
 
 def find_factor_for_dv(r1, r2, target_dv, max_factor=50.0):
+    """Find the energy factor that uses a given delta-V budget.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    target_dv : float
+        Available delta-V budget in m/s.
+    max_factor : float, optional
+        Maximum energy factor to search (default: 50.0).
+
+    Returns
+    -------
+    tuple of float
+        (factor, actual_delta_v) where factor scales the Hohmann
+        semi-major axis and actual_delta_v is the delta-V consumed.
+    """
     dv_hoh, _, _ = hohmann_delta_v(r1, r2)
     if target_dv < dv_hoh:
         return 1.0, dv_hoh
@@ -68,6 +165,22 @@ def find_factor_for_dv(r1, r2, target_dv, max_factor=50.0):
 
 
 def _hohmann_trajectory(r1, r2, points):
+    """Compute a Hohmann transfer arc between two circular orbits.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    points : int
+        Number of points on the trajectory.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        (x, y) coordinates in AU.
+    """
     a = (r1 + r2) / 2
     e = (r2 - r1) / (r2 + r1)
     thetas = np.linspace(0, np.pi, points)
@@ -78,10 +191,54 @@ def _hohmann_trajectory(r1, r2, points):
 
 
 def _compute_r2_actual(r2, target_ecc, orbit_angle):
+    """Compute actual radius at a given true anomaly for an eccentric orbit.
+
+    Parameters
+    ----------
+    r2 : float
+        Nominal radius in meters.
+    target_ecc : float
+        Eccentricity of the target orbit.
+    orbit_angle : float
+        True anomaly in radians.
+
+    Returns
+    -------
+    float
+        Actual radius at the given angle.
+    """
     return r2 * (1 - target_ecc ** 2) / (1 + target_ecc * np.cos(orbit_angle))
 
 
 def _search_transfer(r1, r2, target_dv, points, target_ecc, target_rot, v1_circ):
+    """Search for the fastest transfer within a delta-V budget.
+
+    Brute-force searches over time-of-flight fractions and arrival angles
+    to find Lambert solutions that fit within the delta-V budget.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    target_dv : float
+        Available delta-V budget in m/s.
+    points : int
+        Number of trajectory points.
+    target_ecc : float
+        Eccentricity of the target orbit.
+    target_rot : float
+        Rotation angle of the target orbit in radians.
+    v1_circ : float
+        Circular velocity at departure orbit in m/s.
+
+    Returns
+    -------
+    tuple
+        (best, hohmann_tof) where best is (tof, dnu, v1, r1_vec, r2_actual)
+        or None if no solution found.
+    """
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 
     tof_fractions = np.linspace(0.05, 0.95, 60)
@@ -114,6 +271,34 @@ def _search_transfer(r1, r2, target_dv, points, target_ecc, target_rot, v1_circ)
 
 
 def compute_transfer_trajectory(r1, r2, target_dv, points=500, target_ecc=0.0, target_rot=0.0):
+    """Compute a transfer trajectory between two orbits.
+
+    For delta-V budgets close to Hohmann, returns a simple Hohmann arc.
+    For larger budgets, searches for faster Lambert-based transfers and
+    numerically integrates the trajectory.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    target_dv : float
+        Available delta-V budget in m/s.
+    points : int, optional
+        Number of trajectory points (default: 500).
+    target_ecc : float, optional
+        Eccentricity of the target orbit (default: 0.0).
+    target_rot : float, optional
+        Rotation angle of the target orbit in radians (default: 0.0).
+
+    Returns
+    -------
+    tuple
+        (x, y, dep_burn, arr_burn, dnu) where x, y are trajectory
+        coordinates in AU, dep_burn and arr_burn are burn points in AU,
+        and dnu is the arrival true anomaly.
+    """
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 

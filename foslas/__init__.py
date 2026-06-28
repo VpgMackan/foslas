@@ -1,3 +1,9 @@
+"""foslas - Fast Orbital Solar System Lambert Solver.
+
+A Python library for computing interplanetary transfer trajectories
+between celestial bodies in the solar system.
+"""
+
 from .constants import G, M_SUN, GM_SUN, KM_TO_M, AU_TO_M, AU_TO_KM, SEC_TO_DAY
 from .lambert import lambert_solve, stumpff_S, stumpff_C
 from .integrator import two_body_ode, integrate_trajectory

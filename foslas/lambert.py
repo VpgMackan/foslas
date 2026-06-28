@@ -1,3 +1,10 @@
+"""Lambert's problem solver for orbital transfers.
+
+Solves Lambert's problem: given two position vectors and a time of flight,
+find the velocity vectors at both positions. Uses the universal variable
+formulation with Stumpff functions and Brent's root-finding method.
+"""
+
 import numpy as np
 from scipy.optimize import brentq
 
@@ -5,6 +12,18 @@ from .constants import GM_SUN
 
 
 def stumpff_S(z):
+    """Compute the Stumpff S function.
+
+    Parameters
+    ----------
+    z : float
+        Universal variable.
+
+    Returns
+    -------
+    float
+        Value of the Stumpff S function.
+    """
     if abs(z) < 1e-6:
         return 1.0 / 6.0
     elif z > 0:
@@ -16,6 +35,18 @@ def stumpff_S(z):
 
 
 def stumpff_C(z):
+    """Compute the Stumpff C function.
+
+    Parameters
+    ----------
+    z : float
+        Universal variable.
+
+    Returns
+    -------
+    float
+        Value of the Stumpff C function.
+    """
     if abs(z) < 1e-6:
         return 0.5
     elif z > 0:
@@ -25,6 +56,18 @@ def stumpff_C(z):
 
 
 def _stumpff_C_vec(z):
+    """Vectorized version of stumpff_C for array inputs.
+
+    Parameters
+    ----------
+    z : numpy.ndarray
+        Array of universal variables.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of Stumpff C values.
+    """
     result = np.empty_like(z)
     small = np.abs(z) < 1e-6
     pos = (z > 0) & ~small
@@ -38,6 +81,18 @@ def _stumpff_C_vec(z):
 
 
 def _stumpff_S_vec(z):
+    """Vectorized version of stumpff_S for array inputs.
+
+    Parameters
+    ----------
+    z : numpy.ndarray
+        Array of universal variables.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of Stumpff S values.
+    """
     result = np.empty_like(z)
     small = np.abs(z) < 1e-6
     pos = (z > 0) & ~small
@@ -51,6 +106,28 @@ def _stumpff_S_vec(z):
 
 
 def _tof_residual_vec(z, r1_mag, r2_mag, A, mu, tof):
+    """Compute time-of-flight residual for vectorized z values.
+
+    Parameters
+    ----------
+    z : numpy.ndarray
+        Array of universal variables to evaluate.
+    r1_mag : float
+        Magnitude of the first position vector.
+    r2_mag : float
+        Magnitude of the second position vector.
+    A : float
+        Geometry constant from Lambert's problem.
+    mu : float
+        Standard gravitational parameter.
+    tof : float
+        Desired time of flight.
+
+    Returns
+    -------
+    numpy.ndarray
+        Residual values (computed_tof - target_tof).
+    """
     C = _stumpff_C_vec(z)
     S = _stumpff_S_vec(z)
     denom = np.sqrt(C)
@@ -69,6 +146,29 @@ def _tof_residual_vec(z, r1_mag, r2_mag, A, mu, tof):
 
 
 def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
+    """Solve Lambert's problem for two position vectors and time of flight.
+
+    Parameters
+    ----------
+    r1_vec : array-like
+        First position vector [x, y, z] in meters.
+    r2_vec : array-like
+        Second position vector [x, y, z] in meters.
+    tof : float
+        Time of flight in seconds.
+    mu : float, optional
+        Standard gravitational parameter (default: GM_SUN).
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        Velocity vectors (v1, v2) at the two positions.
+
+    Raises
+    ------
+    ValueError
+        If no solution is found for the given inputs.
+    """
     r1_vec = np.asarray(r1_vec, dtype=float)
     r2_vec = np.asarray(r2_vec, dtype=float)
 

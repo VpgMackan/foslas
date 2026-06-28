@@ -1,3 +1,9 @@
+"""Visualization module for orbital transfer trajectories.
+
+Provides functions to plot planetary orbits and transfer trajectories
+using matplotlib.
+"""
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -11,6 +17,17 @@ from .orbital import hohmann_delta_v, compute_transfer_trajectory
 
 
 def plot_orbit(ax, body_data, rotation=0):
+    """Plot a full elliptical orbit for a celestial body.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to plot on.
+    body_data : dict
+        Body data with 'aphelion', 'perihelion', and 'name' fields.
+    rotation : float, optional
+        Rotation angle in radians (default: 0).
+    """
     a = (body_data["aphelion"] + body_data["perihelion"]) / 2
     e = (body_data["aphelion"] - body_data["perihelion"]) / (
         body_data["aphelion"] + body_data["perihelion"]
@@ -26,6 +43,25 @@ def plot_orbit(ax, body_data, rotation=0):
 
 
 def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
+    """Plot a transfer trajectory with departure and arrival markers.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to plot on.
+    x, y : numpy.ndarray
+        Trajectory coordinates in AU.
+    dep : numpy.ndarray
+        Departure burn point [x, y] in AU.
+    arr : numpy.ndarray
+        Arrival burn point [x, y] in AU.
+    label : str
+        Label for the legend.
+    color : str
+        Color for the trajectory line.
+    linestyle : str, optional
+        Line style (default: "-").
+    """
     ax.plot(x, y, linestyle=linestyle, color=color, linewidth=2, label=label)
     ax.plot(dep[0], dep[1], marker="^", color=color, markersize=10, zorder=5)
     ax.plot(arr[0], arr[1], marker="s", color=color, markersize=10, zorder=5)
@@ -46,6 +82,24 @@ def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
 
 
 def visualize(r1, r2, target_dv, bodies_data, stats=None):
+    """Create a complete visualization of orbital transfer trajectories.
+
+    Plots the Sun, both planetary orbits, Hohmann transfer, and optionally
+    a fast transfer trajectory.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    target_dv : float
+        Available delta-V budget in m/s.
+    bodies_data : list of dict
+        Body data for departure and arrival bodies.
+    stats : dict, optional
+        Statistics to display in the plot (hohmann_dv, hohmann_time, etc.).
+    """
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.plot(0, 0, "yo", label="Sun", markersize=15)
 
