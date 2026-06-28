@@ -1,13 +1,8 @@
 import numpy as np
-from typing import Optional
 
-G = 6.67430e-11  # m³ kg⁻¹ s⁻²
-M_SUN = 1.989e30  # kg
-MU_SUN = G * M_SUN  # Standard gravitational parameter (m³/s²)
+BIG_G = 6.67 * 10 ** (-11)
+BIG_M = 1.989 * 10**30
 
-KM_TO_M = 1000
-M_TO_KM = 0.001
-SECONDS_PER_YEAR = 31557600
 
 # TODO (fuck)
 def calc_kep_3(semi_major_axis=None, orbital_period=None) -> float:
@@ -15,16 +10,14 @@ def calc_kep_3(semi_major_axis=None, orbital_period=None) -> float:
         return (orbital_period**2) ** (1 / 3)
     elif semi_major_axis:
         return np.sqrt(semi_major_axis**3)
-    else:
-        raise ValueError
 
 
 def calc_vis_viva(current_radius: float, semi_major_axis: float) -> float:
-    return np.sqrt(G_SUN * MU_SUN * (2 / current_radius - 1 / semi_major_axis))
+    return np.sqrt(BIG_G * BIG_M * (2 / current_radius - 1 / semi_major_axis))
 
 
 def calc_cen_acceleration(current_radius: float) -> float:
-    return (G_SUN * MU_SUN) / (current_radius**2)
+    return (BIG_G * BIG_M) / (current_radius**2)
 
 
 def calc_eccentricity(apogee: float, perigee: float) -> float:
@@ -45,7 +38,7 @@ def calc_eccentricity(apogee: float, perigee: float) -> float:
 
 
 def calc_semi_minor_axis(eccentricity: float, semi_major_axis: float) -> float:
-    return np.sqrt(semi_major_axis**2 * (1 - eccentricity**2))
+    return np.sqrt((semi_major_axis**2) / (eccentricity - 1))
 
 
 def calc_area(semi_minor_axis: float, semi_major_axis: float) -> float:
