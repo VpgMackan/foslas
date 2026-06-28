@@ -34,7 +34,7 @@ def plot_orbit(ax, body_data, rotation=0):
         r * np.cos(theta + rotation) / AU_TO_KM,
         r * np.sin(theta + rotation) / AU_TO_KM,
         linewidth=1.5,
-        label=f"Orbit for {body_data['name']}",
+        label=f"Orbit for {body_data['englishName']}",
     )
 ```
 

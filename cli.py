@@ -47,7 +47,7 @@ def find_body(bodies, body_id):
         The body data dictionary, or None if not found.
     """
     body_id = body_id.strip().lower()
-    return next((b for b in bodies if b["id"].lower() == body_id), None)
+    return next((b for b in bodies if b["englishName"].lower() == body_id), None)
 
 
 def get_ap_per(body):
@@ -141,7 +141,7 @@ def cmd_stats(args):
 
     available_dv_m = args.dv * KM_TO_M if args.dv else None
 
-    print(f"\nTransfer: {start['name']} -> {end['name']}")
+    print(f"\nTransfer: {start['englishName']} -> {end['englishName']}")
     print("=" * 55)
     print("  HOHMANN TRANSFER (minimum energy)")
     print("-" * 55)
@@ -222,17 +222,13 @@ def cmd_list(args):
 
     if args.search:
         query = args.search.lower()
-        planets = [
-            b
-            for b in bodies
-            if query in b["id"].lower() or query in b.get("name", "").lower()
-        ]
+        planets = [b for b in bodies if query in b["englishName"].lower()]
 
-    print(f"\n{'ID':<25} {'Name':<30} {'Semi-major axis (km)':>22}")
+    print(f"\n{'ID':<25} {'englishName':<30} {'Semi-major axis (km)':>22}")
     print("-" * 80)
     for b in planets:
         sma = b.get("semimajorAxis", 0)
-        print(f"{b['id']:<25} {b.get('name', 'N/A'):<30} {sma:>22,.0f}")
+        print(f"{b['id']:<25} {b.get('englishName', 'N/A'):<30} {sma:>22,.0f}")
     print(f"\n{len(planets)} body(s) found.")
 
 

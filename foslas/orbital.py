@@ -100,7 +100,7 @@ def transfer_time(r1, r2, factor):
     M1 = E1 - e * np.sin(E1)
     M2 = E2 - e * np.sin(E2)
     dM = abs(M2 - M1)
-    return dM * np.sqrt(a ** 3 / GM_SUN) / SEC_TO_DAY
+    return dM * np.sqrt(a**3 / GM_SUN) / SEC_TO_DAY
 
 
 def _calc_dv_for_factor(r1, r2, factor):
@@ -126,7 +126,7 @@ def _calc_dv_for_factor(r1, r2, factor):
     vt1 = np.sqrt(GM_SUN * (2 / r1 - 1 / a))
     v_theta = r1 * vt1 / r2
     v_arr_mag = np.sqrt(GM_SUN * (2 / r2 - 1 / a))
-    v_radial_sq = v_arr_mag ** 2 - v_theta ** 2
+    v_radial_sq = v_arr_mag**2 - v_theta**2
     v_radial = np.sqrt(v_radial_sq) if v_radial_sq > 0 else 0.0
     dv_dep = abs(vt1 - v1_circ)
     dv_arr = np.hypot(v_radial, v2_circ - v_theta)
@@ -194,7 +194,7 @@ def _hohmann_trajectory(r1, r2, points):
     a = (r1 + r2) / 2
     e = (r2 - r1) / (r2 + r1)
     thetas = np.linspace(0, np.pi, points)
-    radii = (a * (1 - e ** 2)) / (1 + e * np.cos(thetas))
+    radii = (a * (1 - e**2)) / (1 + e * np.cos(thetas))
     x = radii * np.cos(thetas) / AU_TO_M
     y = radii * np.sin(thetas) / AU_TO_M
     return x, y
@@ -217,7 +217,7 @@ def _compute_r2_actual(r2, target_ecc, orbit_angle):
     float
         Actual radius at the given angle.
     """
-    return r2 * (1 - target_ecc ** 2) / (1 + target_ecc * np.cos(orbit_angle))
+    return r2 * (1 - target_ecc**2) / (1 + target_ecc * np.cos(orbit_angle))
 
 
 def _search_transfer(r1, r2, target_dv, points, target_ecc, target_rot, v1_circ):
@@ -280,7 +280,9 @@ def _search_transfer(r1, r2, target_dv, points, target_ecc, target_rot, v1_circ)
     return best, hohmann_tof
 
 
-def compute_transfer_trajectory(r1, r2, target_dv, points=500, target_ecc=0.0, target_rot=0.0):
+def compute_transfer_trajectory(
+    r1, r2, target_dv, points=500, target_ecc=0.0, target_rot=0.0
+):
     """Compute a transfer trajectory between two orbits.
 
     For delta-V budgets close to Hohmann, returns a simple Hohmann arc.
@@ -324,7 +326,9 @@ def compute_transfer_trajectory(r1, r2, target_dv, points=500, target_ecc=0.0, t
 
     v1_circ = np.sqrt(GM_SUN / r1)
 
-    best, _ = _search_transfer(r1, r2, target_dv, points, target_ecc, target_rot, v1_circ)
+    best, _ = _search_transfer(
+        r1, r2, target_dv, points, target_ecc, target_rot, v1_circ
+    )
 
     if best is None:
         tof = hohmann_tof * 0.5
