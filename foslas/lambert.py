@@ -9,7 +9,7 @@ def stumpff_S(z):
         return 1.0 / 6.0
     elif z > 0:
         sz = np.sqrt(z)
-        return (sz - np.sin(sz)) / (sz**3)
+        return (sz - np.sin(sz)) / (sz ** 3)
     else:
         sz = np.sqrt(-z)
         return (np.sinh(sz) - sz) / ((-z) ** 1.5)
@@ -24,12 +24,56 @@ def stumpff_C(z):
         return (np.cosh(np.sqrt(-z)) - 1) / (-z)
 
 
+def _stumpff_C_vec(z):
+    result = np.empty_like(z)
+    small = np.abs(z) < 1e-6
+    pos = (z > 0) & ~small
+    neg = (z < 0) & ~small
+    result[small] = 0.5
+    sz = np.sqrt(z[pos])
+    result[pos] = (1 - np.cos(sz)) / z[pos]
+    sz = np.sqrt(-z[neg])
+    result[neg] = (np.cosh(sz) - 1) / (-z[neg])
+    return result
+
+
+def _stumpff_S_vec(z):
+    result = np.empty_like(z)
+    small = np.abs(z) < 1e-6
+    pos = (z > 0) & ~small
+    neg = (z < 0) & ~small
+    result[small] = 1.0 / 6.0
+    sz = np.sqrt(z[pos])
+    result[pos] = (sz - np.sin(sz)) / (z[pos] ** 1.5)
+    sz = np.sqrt(-z[neg])
+    result[neg] = (np.sinh(sz) - sz) / ((-z[neg]) ** 1.5)
+    return result
+
+
+def _tof_residual_vec(z, r1_mag, r2_mag, A, mu, tof):
+    C = _stumpff_C_vec(z)
+    S = _stumpff_S_vec(z)
+    denom = np.sqrt(C)
+    result = np.full_like(z, 1e20)
+    safe = denom > 1e-30
+    y = r1_mag + r2_mag + A * (z * S - 1) / denom
+    safe &= y > 0
+    if np.any(safe):
+        ys = y[safe]
+        Cs = C[safe]
+        Ss = S[safe]
+        x = np.sqrt(ys / Cs)
+        t = (x ** 3 * Ss + A * np.sqrt(ys)) / np.sqrt(mu)
+        result[safe] = t - tof
+    return result
+
+
 def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
     r1_vec = np.asarray(r1_vec, dtype=float)
     r2_vec = np.asarray(r2_vec, dtype=float)
 
-    r1_mag = np.linalg.norm(r1_vec)
-    r2_mag = np.linalg.norm(r2_vec)
+    r1_mag = np.sqrt(r1_vec[0] ** 2 + r1_vec[1] ** 2 + r1_vec[2] ** 2)
+    r2_mag = np.sqrt(r2_vec[0] ** 2 + r2_vec[1] ** 2 + r2_vec[2] ** 2)
 
     cos_dnu = np.clip(np.dot(r1_vec, r2_vec) / (r1_mag * r2_mag), -1.0, 1.0)
     cross = np.cross(r1_vec, r2_vec)
@@ -47,10 +91,10 @@ def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
         if y < 0:
             return 1e20
         x = np.sqrt(y / C)
-        t = (x**3 * S + A * np.sqrt(y)) / np.sqrt(mu)
+        t = (x ** 3 * S + A * np.sqrt(y)) / np.sqrt(mu)
         return t - tof
 
-    z_bound = 4 * np.pi**2 - 0.1
+    z_bound = 4 * np.pi ** 2 - 0.1
 
     z = None
     try:
@@ -59,7 +103,7 @@ def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
         n_scan = 200
         for z_lo, z_hi in [(0.01, z_bound), (-z_bound, -0.01)]:
             z_scan = np.linspace(z_lo, z_hi, n_scan)
-            res_scan = np.array([tof_residual(zz) for zz in z_scan])
+            res_scan = _tof_residual_vec(z_scan, r1_mag, r2_mag, A, mu, tof)
             valid = np.abs(res_scan) < 1e19
             z_valid = z_scan[valid]
             res_valid = res_scan[valid]

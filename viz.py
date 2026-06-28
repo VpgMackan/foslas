@@ -49,16 +49,12 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.plot(0, 0, "yo", label="Sun", markersize=15)
 
-    def orbit_ecc(body_data):
-        ap = body_data.get("aphelion", 0)
-        pe = body_data.get("perihelion", 0)
-        denom = ap + pe
-        if denom == 0:
-            return 0.0
-        return (ap - pe) / denom
-
-    e_start = orbit_ecc(bodies_data[0]) if len(bodies_data) > 0 else 0.0
-    e_end = orbit_ecc(bodies_data[1]) if len(bodies_data) > 1 else 0.0
+    e_start = (bodies_data[0].get("aphelion", 0) - bodies_data[0].get("perihelion", 0)) / (
+        bodies_data[0].get("aphelion", 0) + bodies_data[0].get("perihelion", 0)
+    ) if len(bodies_data) > 0 else 0.0
+    e_end = (bodies_data[1].get("aphelion", 0) - bodies_data[1].get("perihelion", 0)) / (
+        bodies_data[1].get("aphelion", 0) + bodies_data[1].get("perihelion", 0)
+    ) if len(bodies_data) > 1 else 0.0
 
     alpha_start = np.arccos(np.clip(-e_start, -1, 1))
 
