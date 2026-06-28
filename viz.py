@@ -1,96 +1,68 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
-from calc import RocketStructure, OrbitalStructure, AU_TO_M
+import json
+import matplotlib
 
+matplotlib.use("Agg")
 
-def plot_planetary_orbits(ax, bodies_data: list):
-    """Plot planetary orbits based on orbital elements."""
-    for body in bodies_data:
-        a = (body["aphelion"] + body["perihelion"]) / 2
-        e = (body["aphelion"] - body["perihelion"]) / (body["aphelion"] + body["perihelion"])
-        
-        theta = np.linspace(0, 2 * np.pi, 1000)
-        r = (a * (1 - e**2)) / (1 + e * np.cos(theta))
-        
-        x = (r * np.cos(theta)) / AU_TO_M
-        y = (r * np.sin(theta)) / AU_TO_M
-        ax.plot(x, y, label=f"Orbit for {body['name']}", linewidth=1.5)
-        
-        # Mark current position (at aphelion for simplicity)
-        ax.plot(body["aphelion"] / AU_TO_M, 0, 'o', markersize=4)
-
-
-def plot_transfer_trajectory(ax, x_path: np.ndarray, y_path: np.ndarray,
-                            dep_burn: np.ndarray, arr_burn: np.ndarray,
-                            start_name: str, end_name: str):
-    """Plot the transfer trajectory with burn point annotations."""
-    # Plot integrated trajectory
-    ax.plot(x_path, y_path, "--r", linewidth=2, label="Transfer Trajectory")
-    
-    # Mark departure burn point
-    ax.plot(dep_burn[0], dep_burn[1], "g^", markersize=12, label=f"Departure Burn ({start_name})")
-    
-    # Mark arrival burn point
-    ax.plot(arr_burn[0], arr_burn[1], "bs", markersize=12, label=f"Arrival Burn ({end_name})")
-    
-    # Add arrows to show direction of travel
-    n_points = len(x_path)
-    if n_points > 10:
-        arrow_idx = n_points // 4
-        arrow = FancyArrowPatch(
-            (x_path[arrow_idx], y_path[arrow_idx]),
-            (x_path[arrow_idx + 2], y_path[arrow_idx + 2]),
-            arrowstyle='->', color='red', mutation_scale=15, lw=1.5
-        )
-        ax.add_patch(arrow)
+from calc import OrbitalBody, visualize, hohmann_delta_v, find_factor_for_dv, transfer_time, KM_TO_M
 
 
 def main():
-    fig, ax = plt.subplots(figsize=(10, 10))
-    
-    # Plot Sun at origin
-    ax.plot(0, 0, "yo", label="Sun", markersize=15)
-    
-    # Bodies to plot
-    PLOTS = [
-        {"name": "Earth", "perihelion": 147099736.0159, "aphelion": 152096309.98409998},
-        {"name": "Mars", "perihelion": 206626884.79999998, "aphelion": 249251515.2},
-    ]
-    
-    plot_planetary_orbits(ax, PLOTS)
-    
-    START = "Earth"
-    END = "Mars"
-    
-    start_body = next((b for b in PLOTS if b["name"].lower() == START.lower()), None)
-    end_body = next((b for b in PLOTS if b["name"].lower() == END.lower()), None)
-    
-    if start_body and end_body:
-        start = OrbitalStructure(start_body["aphelion"], start_body["perihelion"])
-        end = OrbitalStructure(end_body["aphelion"], end_body["perihelion"])
-        
-        # Get transfer trajectory using Lambert solver
-        factor, _ = RocketStructure.find_factor_for_dv(
-            start.current_radius, end.current_radius, 30 * 1000
-        )
-        
-        x_path, y_path, dep_burn, arr_burn = RocketStructure.get_transfer_path(
-            start.current_radius, end.current_radius, factor, points=100
-        )
-        
-        plot_transfer_trajectory(ax, x_path, y_path, dep_burn, arr_burn, START, END)
-    
-    # Formatting
-    ax.set_aspect('equal', adjustable='box')
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper right', fontsize=9)
-    ax.set_xlabel("Distance (AU)", fontsize=11)
-    ax.set_ylabel("Distance (AU)", fontsize=11)
-    ax.set_title("Planetary Transfer Trajectory\n(ODE Integration with Energy Factor)", fontsize=13)
-    
-    plt.tight_layout()
-    plt.show()
+    with open("./data.json") as f:
+        dataset = json.load(f)["bodies"]
+
+    start_id = input("Start body ID: ").strip().lower()
+    end_id = input("Destination body ID: ").strip().lower()
+
+    start_body = next((b for b in dataset if b["id"].lower() == start_id), None)
+    end_body = next((b for b in dataset if b["id"].lower() == end_id), None)
+
+    if not start_body or not end_body:
+        print("Body not found!")
+        return
+
+    def get_ap_per(body):
+        if body.get("apogee", 0) > 0 and body.get("perigee", 0) > 0:
+            return body["apogee"], body["perigee"]
+        sma = body.get("semimajorAxis", 0)
+        return sma, sma
+
+    a1, p1 = get_ap_per(start_body)
+    a2, p2 = get_ap_per(end_body)
+
+    try:
+        start = OrbitalBody(a1, p1)
+        end = OrbitalBody(a2, p2)
+    except ValueError:
+        print("\nError: Invalid orbit parameters for the selected bodies.")
+        return
+
+    print(
+        f"\nTransfer: {start_body.get('name', start_id)} → {end_body.get('name', end_id)}"
+    )
+
+    try:
+        available_dv_km = float(input("\nAvailable total Delta-V (km/s): ") or 30.0)
+    except ValueError:
+        available_dv_km = 30.0
+
+    available_dv_m = available_dv_km * KM_TO_M
+
+    _, _, total_hohmann = hohmann_delta_v(start.sma, end.sma)
+    fast_factor, fast_dv = find_factor_for_dv(start.sma, end.sma, available_dv_m)
+
+    stats = {
+        "hohmann_dv": total_hohmann / 1000,
+        "hohmann_time": transfer_time(start.sma, end.sma, 1.0),
+        "fast_dv": fast_dv / 1000,
+        "fast_factor": fast_factor,
+        "fast_time": transfer_time(start.sma, end.sma, fast_factor),
+    }
+
+    visualize(start.sma, end.sma, available_dv_m, [start_body, end_body], stats=stats)
+
+    import matplotlib.pyplot as plt
+
+    plt.savefig("Figure_1.png", dpi=150, bbox_inches="tight")
 
 
 if __name__ == "__main__":
