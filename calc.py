@@ -1,4 +1,5 @@
 import json
+import math
 import numpy as np
 
 G = 6.67430e-11  # m^3 kg^-1 s^-2
@@ -82,7 +83,27 @@ class OrbitalStructure:
         return (2 * np.pi) / (orbital_period * days)
 
 
-def total_delta_v(delta_v, r1, r2):
+class RocketStructure(OrbitalStructure):
+    def __init__(self, apogee, perigee):
+        super().__init__(apogee, perigee)
+        
+    def calc_a(DV, r):
+        """
+        Beräknar halvstoraxeln a efter en Delta V-manöver.
+
+        Parametrar:
+            DV : Delta V (m/s)
+            r  : Radie där manövern sker (m)
+
+        Returnerar:
+            a : Halvstoraxel (m)
+        """
+        v = math.sqrt(GM / r) + DV
+        a = 1 / (2 / r - v**2 / GM)
+        return a
+
+
+def calc_delta_v(delta_v, r1, r2):
     """
     Beräknar summan av två Delta V.
 
@@ -106,8 +127,8 @@ def total_delta_v(delta_v, r1, r2):
     a = 1 / (2 / r1 - v1_new**2 / GM)
 
     # Hastigheter på transferbanan
-    vt1 = np.sqrt(GM * (2 / r1 - 1 / a))
-    vt2 = np.sqrt(GM * (2 / r2 - 1 / a))
+    vt1 = math.sqrt(GM * (2 / r1 - 1 / a))
+    vt2 = math.sqrt(GM * (2 / r2 - 1 / a))
 
     # Total Delta V
     DV = abs(vt1 - v1) + abs(v2 - vt2)
@@ -117,7 +138,7 @@ def total_delta_v(delta_v, r1, r2):
 
 if __name__ == "__main__":
     delta_v = float(input("Enter your delta V: "))
-    angle_between_obj = float(input("Enter angle between objects: "))
+    # angle_between_obj = float(input("Enter angle between objects: "))
 
     dataset = json.load(open("./data.json"))["bodies"]
     start_body_id = input("Enter your start body id: ")
@@ -127,13 +148,21 @@ if __name__ == "__main__":
     end_body = next((x for x in dataset if x["id"] == end_body_id), None)
 
     start_orbital_structure = OrbitalStructure(
-        start_body["apogee"],
-        start_body["perigee"],
+        start_body["apogee"] * 1000,
+        start_body["perigee"] * 1000,
     )
 
     end_orbital_structure = OrbitalStructure(
-        end_body["apogee"],
-        end_body["perigee"],
+        end_body["apogee"] * 1000,
+        end_body["perigee"] * 1000,
     )
 
-    print(total_delta_v(delta_v, r1, r2))
+    rocket_structure = RocketStructure()
+
+    minimum_delta_v = calc_delta_v(
+        delta_v,
+        start_orbital_structure.current_radius,
+        end_orbital_structure.current_radius,
+    )
+
+    print(f"Minimum delta v: {minimum_delta_v}")
