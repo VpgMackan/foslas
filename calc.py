@@ -85,6 +85,23 @@ class RocketStructure:
 
         return best_factor, best_dv
 
+    @staticmethod
+    def get_transfer_path(r1, r2, factor, points=100):
+        a = ((r1 + r2) / 2) * factor
+        e = 1 - r1 / a
+
+        cos_theta_end = (a * (1 - e**2) / r2 - 1) / e
+        theta_end = np.arccos(np.clip(cos_theta_end, -1, 1))
+
+        thetas = np.linspace(0, theta_end, points)
+        # Polar equation for the transfer ellipse
+        # r = a(1 - e^2) / (1 + e*cos(theta))
+        radii = (a * (1 - e**2)) / (1 + e * np.cos(thetas))
+
+        x = radii * np.cos(thetas)
+        y = radii * np.sin(thetas)
+        return x, y
+
 
 def main():
     print("=== Orbital Transfer Calculator (by Delta-V Budget) ===\n")
