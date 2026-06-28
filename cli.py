@@ -93,7 +93,7 @@ def cmd_plot(args):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from viz import visualize
+    from foslas.viz import visualize
 
     start, end, start_ob, end_ob = resolve_bodies(args.start, args.end)
 

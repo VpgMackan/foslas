@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
 
-from foslas.constants import AU_TO_KM
-from foslas.orbital import hohmann_delta_v, compute_transfer_trajectory
+from .constants import AU_TO_KM
+from .orbital import hohmann_delta_v, compute_transfer_trajectory
 
 
 def plot_orbit(ax, body_data, rotation=0):
