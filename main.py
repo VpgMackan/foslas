@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import requests
 from dotenv import load_dotenv
@@ -6,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 req = requests.get(
-    "https://api.le-systeme-solaire.net/rest/bodies?data=id%2Cname%2CsemimajorAxis%2Ceccentricity%2Cperihelion%2Caphelion",
+    "https://api.le-systeme-solaire.net/rest/bodies?data=id,name,semimajorAxis,eccentricity,perihelion,aphelion,parentBody",
     headers={"Authorization": f'Bearer {os.getenv("L_OPEN_DATA")}'},
 )
 
