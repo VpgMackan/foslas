@@ -17,5 +17,5 @@ for i in data["bodies"]:
     i["apogee"] = i["semimajorAxis"] * (1 + i["eccentricity"])
     i["perigee"] = i["semimajorAxis"] * (1 - i["eccentricity"])
 
-with open("data.json", "w") as f:
+with open("data/data.json", "w") as f:
     json.dump(data, f)
