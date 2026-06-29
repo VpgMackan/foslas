@@ -9,12 +9,10 @@ import json
 import sys
 
 from foslas.constants import KM_TO_M
-from foslas.orbital import (
-    OrbitalBody,
-    hohmann_delta_v,
-    find_factor_for_dv,
-    transfer_time,
-)
+from foslas.transfers.base import OrbitalBody
+from foslas.transfers.hohmann import hohmann_delta_v
+from foslas.transfers.fast import find_factor_for_dv
+from foslas.transfers.base import transfer_time
 
 DATA_PATH = "data/data.json"
 
@@ -32,7 +30,7 @@ def _orbit_params(body):
     tuple of float
         (eccentricity, rotation_angle) where rotation_angle is in radians.
     """
-    from foslas.viz import get_body_ecliptic, compute_orbit_rotation
+    from foslas.transfers.visualization import get_body_ecliptic, compute_orbit_rotation
 
     aph = body.get("aphelion", 0)
     peri = body.get("perihelion", 0)
@@ -211,7 +209,7 @@ def cmd_plot(args):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from foslas.viz import visualize
+    from foslas.transfers.visualization import visualize
 
     start, end, start_ob, end_ob = resolve_bodies(args.start, args.end)
 
