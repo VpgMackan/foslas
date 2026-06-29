@@ -22,11 +22,8 @@ from .core import (
     plot_transfer,
     propagate_orbit_position,
 )
-from .animate import animate_transfer
-
 __all__ = [
     "visualize",
-    "animate_transfer",
     "plot_orbit",
     "plot_transfer",
     "get_body_ecliptic",
@@ -155,15 +152,13 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     if stats:
         actual_fast_dv = stats["fast_dv"]
         actual_fast_factor = stats["fast_factor"]
-        actual_fast_time = (
-            fast_tof_s / 86400.0 if fast_tof_s is not None else hohmann_tof_s / 86400.0
-        )
-        actual_hohmann_time = hohmann_tof_s / 86400.0
+        display_fast_time = stats["fast_time"]
+        display_hohmann_time = stats["hohmann_time"]
 
         if target_dv > hohmann_dv + 1.0:
-            future_time = actual_fast_time
+            future_time = fast_tof_s / 86400.0
         else:
-            future_time = actual_hohmann_time
+            future_time = hohmann_tof_s / 86400.0
 
         planet_x, planet_y = propagate_orbit_position(
             bodies_data[1], arr_lon, arr_rotation, future_time
@@ -183,7 +178,7 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
             "--- Fast Transfer ---\n"
             f"Dv used:       {actual_fast_dv:.2f} km/s\n"
             f"Energy factor: {actual_fast_factor:.2f}\n"
-            f"Est. time:     {actual_fast_time:.1f} days"
+            f"Est. time:     {display_fast_time:.1f} days"
         )
         props = dict(boxstyle="round,pad=0.5", facecolor="black", alpha=0.7)
         ax.text(

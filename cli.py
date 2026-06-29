@@ -329,52 +329,6 @@ def cmd_plot(args):
     print(f"Plot saved to {output}")
 
 
-def cmd_animate(args):
-    """Handle the 'animate' subcommand.
-
-    Generates and saves an animated GIF of the transfer trajectory.
-    """
-    from foslas.transfers.visualization import animate_transfer
-
-    start, end, start_ob, end_ob = resolve_bodies(args.start, args.end)
-
-    dep_ecc, dep_rot = _orbit_params(start)
-    arr_ecc, arr_rot = _orbit_params(end)
-
-    available_dv_m = args.dv * KM_TO_M if args.dv else 30.0 * KM_TO_M
-    _, _, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
-    fast_factor, fast_dv = find_factor_for_dv(
-        start_ob.sma,
-        end_ob.sma,
-        available_dv_m,
-        dep_ecc=dep_ecc,
-        dep_rot=dep_rot,
-        arr_ecc=arr_ecc,
-        arr_rot=arr_rot,
-    )
-
-    stats = {
-        "hohmann_dv": total_hohmann / 1000,
-        "hohmann_time": transfer_time(start_ob.sma, end_ob.sma, 1.0),
-        "fast_dv": fast_dv / 1000,
-        "fast_factor": fast_factor,
-        "fast_time": transfer_time(start_ob.sma, end_ob.sma, fast_factor),
-    }
-
-    animate_transfer(
-        start_ob.sma,
-        end_ob.sma,
-        available_dv_m,
-        [start, end],
-        output_path=args.output,
-        fps=args.fps,
-        duration_seconds=args.duration,
-        dpi=args.dpi,
-        stats=stats,
-        pad_frames=args.pad_frames,
-    )
-
-
 def cmd_list(args):
     """Handle the 'list' subcommand.
 
@@ -436,50 +390,6 @@ def main():
         help="Output file (default: transfer.png)",
     )
     p_plot.set_defaults(func=cmd_plot)
-
-    p_anim = sub.add_parser(
-        "animate", help="Generate animated GIF of transfer trajectory"
-    )
-    p_anim.add_argument("start", help="Departure body ID")
-    p_anim.add_argument("end", help="Arrival body ID")
-    p_anim.add_argument(
-        "-d",
-        "--dv",
-        type=float,
-        default=None,
-        help="Available delta-V budget in km/s (default: 30)",
-    )
-    p_anim.add_argument(
-        "-o",
-        "--output",
-        default="transfer.gif",
-        help="Output file (default: transfer.gif)",
-    )
-    p_anim.add_argument(
-        "--fps",
-        type=int,
-        default=30,
-        help="Frames per second (default: 30)",
-    )
-    p_anim.add_argument(
-        "--duration",
-        type=float,
-        default=None,
-        help="Animation duration in seconds (default: auto-scaled)",
-    )
-    p_anim.add_argument(
-        "--dpi",
-        type=int,
-        default=150,
-        help="Resolution in DPI (default: 150)",
-    )
-    p_anim.add_argument(
-        "--pad-frames",
-        type=int,
-        default=15,
-        help="Static frames at start/end (default: 15)",
-    )
-    p_anim.set_defaults(func=cmd_animate)
 
     p_list = sub.add_parser("list", help="List available celestial bodies")
     p_list.add_argument(

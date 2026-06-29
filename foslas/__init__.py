@@ -13,7 +13,6 @@ from .transfers.fast import find_factor_for_dv, compute_fast_trajectory
 from .transfers import compute_transfer_trajectory
 from .transfers.visualization import (
     visualize,
-    animate_transfer,
     plot_orbit,
     plot_transfer,
 )
@@ -24,5 +23,5 @@ __all__ = [
     "two_body_ode", "integrate_trajectory",
     "OrbitalBody", "hohmann_delta_v", "transfer_time", "find_factor_for_dv",
     "compute_transfer_trajectory", "compute_fast_trajectory",
-    "plot_orbit", "plot_transfer", "visualize", "animate_transfer",
+    "plot_orbit", "plot_transfer", "visualize",
 ]
