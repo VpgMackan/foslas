@@ -7,11 +7,10 @@ coordinating between Hohmann and fast Lambert-based transfers.
 import numpy as np
 
 from ..constants import GM_SUN, AU_TO_M
-from ..lambert import lambert_solve
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual
 from .hohmann import hohmann_delta_v, hohmann_trajectory
-from .fast import search_transfer
+from .fast import search_transfer, _hohmann_fallback
 
 
 def compute_transfer_trajectory(
@@ -75,51 +74,7 @@ def compute_transfer_trajectory(
     )
 
     if best is None:
-        tof = hohmann_tof * 0.5
-        dnu = np.pi * 0.75
-        orbit_angle = dnu - target_rot
-        r2_actual = compute_r2_actual(r2, target_ecc, orbit_angle)
-        dep_nu = -dep_rot
-        r1_actual = compute_r2_actual(r1, dep_ecc, dep_nu)
-        r1_vec = np.array([r1_actual, 0.0, 0.0])
-        r2_vec = np.array([r2_actual * np.cos(dnu), r2_actual * np.sin(dnu), 0.0])
-        try:
-            v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
-        except ValueError:
-            x, y = hohmann_trajectory(r1, r2, points)
-            return (
-                x,
-                y,
-                np.array([r1 / AU_TO_M, 0.0]),
-                np.array([-r2 / AU_TO_M, 0.0]),
-                np.pi,
-                hohmann_tof,
-            )
-        r1_mag = np.linalg.norm(r1_vec)
-        v1_mag = np.linalg.norm(v1)
-        specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
-        if specific_energy >= 0:
-            x, y = hohmann_trajectory(r1, r2, points)
-            return (
-                x,
-                y,
-                np.array([r1 / AU_TO_M, 0.0]),
-                np.array([-r2 / AU_TO_M, 0.0]),
-                np.pi,
-                hohmann_tof,
-            )
-        a_transfer = -GM_SUN / (2.0 * specific_energy)
-        if a_transfer <= 0:
-            x, y = hohmann_trajectory(r1, r2, points)
-            return (
-                x,
-                y,
-                np.array([r1 / AU_TO_M, 0.0]),
-                np.array([-r2 / AU_TO_M, 0.0]),
-                np.pi,
-                hohmann_tof,
-            )
-        best = (tof, dnu, v1, r1_vec, r2_actual)
+        return _hohmann_fallback(r1, r2, points)
 
     tof, dnu, v1, r1_vec, r2_actual = best
     positions, _ = integrate_trajectory(r1_vec, v1, tof, points)
@@ -146,8 +101,9 @@ __all__ = [
     "calc_dv_for_factor",
     "search_transfer",
     "compute_fast_trajectory",
+    "search_transfer_ecliptic",
 ]
 
 from .base import OrbitalBody, transfer_time
 from .hohmann import hohmann_delta_v, hohmann_trajectory
-from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, compute_fast_trajectory
+from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, compute_fast_trajectory, search_transfer_ecliptic

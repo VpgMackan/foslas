@@ -45,9 +45,10 @@ def _orbit_params(body, day_offset=0):
 
     aph = body.get("aphelion", 0)
     peri = body.get("perihelion", 0)
+    ecc = (aph - peri) / (aph + peri) if (aph + peri) > 0 else 0.0
     r_au, lon = get_body_ecliptic(body["englishName"], time_offset_days=day_offset)
     rotation = compute_orbit_rotation(body, lon, r_au)
-    return rotation - lon
+    return ecc, rotation - lon
 
 
 def compute_transfer(start_name, end_name, dv_km_s, day_offset):
@@ -70,8 +71,8 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
     dv_dep, dv_arr, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     hohmann_tof = transfer_time(start_ob.sma, end_ob.sma, 1.0)
 
-    dep_rot = _orbit_params(start, day_offset)
-    arr_rot = _orbit_params(end, day_offset)
+    dep_ecc, dep_rot = _orbit_params(start, day_offset)
+    arr_ecc, arr_rot = _orbit_params(end, day_offset)
 
     available_dv_m = dv_km_s * KM_TO_M
 
@@ -79,9 +80,9 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
         start_ob.sma,
         end_ob.sma,
         available_dv_m,
-        dep_ecc=0.0,
+        dep_ecc=dep_ecc,
         dep_rot=dep_rot,
-        arr_ecc=0.0,
+        arr_ecc=arr_ecc,
         arr_rot=arr_rot,
     )
     fast_tof = transfer_time(start_ob.sma, end_ob.sma, fast_factor)

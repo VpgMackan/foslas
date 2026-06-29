@@ -55,6 +55,11 @@ def integrate_trajectory(r_vec, v_vec, tof, points=500):
     tuple of numpy.ndarray
         (positions, times) where positions is (N, 3) array of [x, y, z]
         and times is (N,) array of time values.
+
+    Raises
+    ------
+    RuntimeError
+        If the integrator fails to converge.
     """
     initial_state = np.empty(6)
     initial_state[:3] = r_vec
@@ -69,4 +74,6 @@ def integrate_trajectory(r_vec, v_vec, tof, points=500):
         rtol=1e-8,
         atol=1e-6,
     )
+    if not sol.success:
+        raise RuntimeError(f"Trajectory integration failed: {sol.message}")
     return sol.y[:3].T, sol.t

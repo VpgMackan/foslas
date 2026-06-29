@@ -27,10 +27,10 @@ def get_body_ecliptic(body_name, time_offset_days=0):
 
     body_name_lower = body_name.lower().replace(" ", "_")
     if body_name_lower in ASTEROID_CATALOG:
-        jd = _datetime_to_jd(datetime.now().utcnow() + timedelta(days=time_offset_days))
+        jd = _datetime_to_jd(datetime.now() + timedelta(days=time_offset_days))
         return compute_asteroid_ephemeris(body_name_lower, jd)
 
-    now = datetime.now().utcnow() + timedelta(days=time_offset_days)
+    now = datetime.now() + timedelta(days=time_offset_days)
     jd = now.timestamp() / 86400.0 + 2440587.5
     days_since_j2000 = jd - 2451545.0
     epoch = pk.epoch(days_since_j2000)

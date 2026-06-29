@@ -12,7 +12,7 @@ import numpy as np
 
 from ...constants import AU_TO_KM, AU_TO_M
 from ..hohmann import hohmann_delta_v
-from ..fast import compute_fast_trajectory
+from ..fast import search_transfer_ecliptic
 from .. import compute_transfer_trajectory
 from ..base import compute_r2_actual, planet_velocity
 from .core import (
@@ -109,53 +109,23 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
 
     fast_tof_s = None
     if target_dv > hohmann_dv + 1.0:
-        dep_rot = dep_rotation - dep_lon
         try:
-            result = compute_transfer_trajectory(
-                dep_sma_m,
-                arr_sma_m,
+            result = search_transfer_ecliptic(
+                bodies_data[0]["englishName"],
+                bodies_data[1]["englishName"],
                 target_dv,
-                target_ecc=e_end,
-                target_rot=arr_rotation - dep_lon,
-                dep_ecc=dep_ecc,
-                dep_rot=dep_rotation - dep_lon,
+                500,
             )
-            if result is None:
-                fast_tof_s = None
+            if result is not None:
+                (x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s), _ = result
             else:
-                x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = result
+                fast_tof_s = None
         except Exception:
             fast_tof_s = None
 
         if fast_tof_s is not None:
             try:
-                future_r, future_lon = get_body_ecliptic(
-                    bodies_data[1]["englishName"], time_offset_days=fast_tof_s / 86400.0
-                )
-                r1_vec = np.array([dep_r * np.cos(dep_lon), dep_r * np.sin(dep_lon), 0.0]) * AU_TO_M
-                r2_vec = np.array(
-                    [future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]
-                ) * AU_TO_M
-                from ...lambert import lambert_solve
-                from ...integrator import integrate_trajectory
-                v1, v2 = lambert_solve(r1_vec, r2_vec, fast_tof_s)
-                from ...constants import GM_SUN
-                r1_mag = np.linalg.norm(r1_vec)
-                v1_mag = np.linalg.norm(v1)
-                specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
-                if specific_energy >= 0:
-                    fast_tof_s = None
-                else:
-                    a_transfer = -GM_SUN / (2.0 * specific_energy)
-                    if a_transfer <= 0:
-                        fast_tof_s = None
-                    else:
-                        positions, _ = integrate_trajectory(r1_vec, v1, fast_tof_s, 500)
-                        x_f = positions[:, 0] / AU_TO_M
-                        y_f = positions[:, 1] / AU_TO_M
-                        dep_f = np.array([r1_vec[0] / AU_TO_M, r1_vec[1] / AU_TO_M])
-                        arr_f = np.array([r2_vec[0] / AU_TO_M, r2_vec[1] / AU_TO_M])
-                        plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
+                plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
             except (ValueError, ZeroDivisionError):
                 fast_tof_s = None
 
