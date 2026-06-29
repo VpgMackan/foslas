@@ -20,10 +20,12 @@ from ...constants import AU_TO_KM, AU_TO_M, GM_SUN
 
 
 def get_body_ecliptic(body_name, time_offset_days=0):
-    now = datetime.utcnow() + timedelta(days=time_offset_days)
-    epoch = pk.epoch_from_string(now.strftime("%Y-%m-%d %H:%M:%S"))
+    now = datetime.now().utcnow() + timedelta(days=time_offset_days)
+    jd = now.timestamp() / 86400.0 + 2440587.5
+    days_since_j2000 = jd - 2451545.0
+    epoch = pk.epoch(days_since_j2000)
 
-    planet = pk.planet.jpl_lp(body_name)
+    planet = pk.planet(pk.udpla.jpl_lp(body_name))
     r, _ = planet.eph(epoch)
 
     x, y, z = r
