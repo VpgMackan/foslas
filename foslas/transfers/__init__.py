@@ -58,7 +58,7 @@ def compute_transfer_trajectory(
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 
-    if abs(target_dv - dv_total_h) < 1.0:
+    if abs(target_dv - dv_total_h) < 1.0 and target_ecc < 1e-10 and dep_ecc < 1e-10:
         x, y = hohmann_trajectory(r1, r2, points)
         return (
             x,
@@ -74,7 +74,7 @@ def compute_transfer_trajectory(
     )
 
     if best is None:
-        return _hohmann_fallback(r1, r2, points)
+        return _hohmann_fallback(r1, r2, points, target_ecc, target_rot)
 
     tof, dnu, v1, r1_vec, r2_actual = best
     positions, _ = integrate_trajectory(r1_vec, v1, tof, points)

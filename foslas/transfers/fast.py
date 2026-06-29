@@ -29,6 +29,7 @@ def search_transfer_ecliptic(
 
     Performs the entire search in the ecliptic frame using actual
     planetary positions from ephemeris, avoiding the frame-mismatch bug.
+    Finds the minimum-TOF solution within the delta-V budget.
 
     Parameters
     ----------
@@ -55,81 +56,46 @@ def search_transfer_ecliptic(
     r1_vec = np.array([dep_r * np.cos(dep_lon), dep_r * np.sin(dep_lon), 0.0]) * AU_TO_M
     v_dep, _ = _get_planet_state(dep_body_name, 0)
 
-    arr_r, arr_lon_initial = get_body_ecliptic(arr_body_name)
+    arr_r, _ = get_body_ecliptic(arr_body_name)
     hohmann_tof = np.pi * np.sqrt(((dep_r + arr_r) / 2 * AU_TO_M) ** 3 / GM_SUN)
 
     max_search_tof = max(hohmann_tof * 3.0, 30 * 86400)
     tof_values = np.linspace(10 * 86400, max_search_tof, 200)
-    dnu_values = np.linspace(0.01, np.pi - 0.05, 100)
 
     best = None
-    best_dv = float('inf')
     best_tof = None
 
     for tof in tof_values:
-        for dnu in dnu_values:
-            future_r, future_lon = get_body_ecliptic(arr_body_name, time_offset_days=tof / 86400.0)
-            r2_vec = np.array([future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]) * AU_TO_M
-            v_arr, _ = _get_planet_state(arr_body_name, tof / 86400.0)
+        future_r, future_lon = get_body_ecliptic(arr_body_name, time_offset_days=tof / 86400.0)
+        r2_vec = np.array([future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]) * AU_TO_M
+        v_arr, _ = _get_planet_state(arr_body_name, tof / 86400.0)
 
-            try:
-                v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
-            except ValueError:
+        try:
+            v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
+        except ValueError:
+            continue
+
+        dv_dep = np.linalg.norm(v1 - v_dep)
+        dv_arr = np.linalg.norm(v2 - v_arr)
+        total_dv = dv_dep + dv_arr
+
+        if total_dv <= target_dv:
+            r1_mag = np.linalg.norm(r1_vec)
+            v1_mag = np.linalg.norm(v1)
+            specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
+            if specific_energy >= 0:
                 continue
-
-            dv_dep = np.linalg.norm(v1 - v_dep)
-            dv_arr = np.linalg.norm(v2 - v_arr)
-            total_dv = dv_dep + dv_arr
-
-            if total_dv <= target_dv:
-                r1_mag = np.linalg.norm(r1_vec)
-                v1_mag = np.linalg.norm(v1)
-                specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
-                if specific_energy >= 0:
-                    continue
-                a_transfer = -GM_SUN / (2.0 * specific_energy)
-                if a_transfer <= 0:
-                    continue
-                if total_dv < best_dv:
-                    best = (tof, dnu, v1, r1_vec, r2_vec)
-                    best_dv = total_dv
-                    best_tof = tof
-
-    if best is not None:
-        tof, dnu, v1, r1_vec, r2_vec = best
-        dnu_values_fine = np.linspace(
-            max(0.01, dnu - 0.1), min(np.pi - 0.05, dnu + 0.1), 50
-        )
-        for dnu in dnu_values_fine:
-            future_r, future_lon = get_body_ecliptic(arr_body_name, time_offset_days=tof / 86400.0)
-            r2_vec = np.array([future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]) * AU_TO_M
-            v_arr, _ = _get_planet_state(arr_body_name, tof / 86400.0)
-
-            try:
-                v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
-            except ValueError:
+            a_transfer = -GM_SUN / (2.0 * specific_energy)
+            if a_transfer <= 0:
                 continue
-
-            dv_dep = np.linalg.norm(v1 - v_dep)
-            dv_arr = np.linalg.norm(v2 - v_arr)
-            total_dv = dv_dep + dv_arr
-
-            if total_dv <= target_dv and total_dv < best_dv:
-                r1_mag = np.linalg.norm(r1_vec)
-                v1_mag = np.linalg.norm(v1)
-                specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
-                if specific_energy >= 0:
-                    continue
-                a_transfer = -GM_SUN / (2.0 * specific_energy)
-                if a_transfer <= 0:
-                    continue
-                best = (tof, dnu, v1, r1_vec, r2_vec)
-                best_dv = total_dv
+            best = (tof, v1, r1_vec, r2_vec)
+            best_tof = tof
+            break
 
     if best is None:
         return None, hohmann_tof
 
-    tof, dnu, v1, r1_vec, r2_vec = best
+    tof, v1, r1_vec, r2_vec = best
     positions, _ = integrate_trajectory(r1_vec, v1, tof, points)
 
     x = positions[:, 0] / AU_TO_M
@@ -137,6 +103,7 @@ def search_transfer_ecliptic(
     dep_burn = np.array([r1_vec[0] / AU_TO_M, r1_vec[1] / AU_TO_M])
     arr_burn = np.array([r2_vec[0] / AU_TO_M, r2_vec[1] / AU_TO_M])
 
+    dnu = np.pi
     return (x, y, dep_burn, arr_burn, dnu, tof), hohmann_tof
 
 
@@ -210,7 +177,7 @@ def _get_planet_state(body_name, time_offset_days):
         return np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])
 
 
-def _hohmann_fallback(r1, r2, points):
+def _hohmann_fallback(r1, r2, points, target_ecc=0.0, target_rot=0.0):
     """Return Hohmann transfer as fallback trajectory.
 
     Returns
@@ -219,13 +186,18 @@ def _hohmann_fallback(r1, r2, points):
         (x, y, dep_burn, arr_burn, dnu, tof) for Hohmann transfer.
     """
     x, y = hohmann_trajectory(r1, r2, points)
-    _, _, hohmann_tof = hohmann_delta_v(r1, r2)
+    hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
+    dnu = np.pi
+    orbit_angle = dnu - target_rot
+    r2_actual = r2 * (1 - target_ecc**2) / (1 + target_ecc * np.cos(orbit_angle))
     return (
         x,
         y,
         np.array([r1 / AU_TO_M, 0.0]),
-        np.array([-r2 / AU_TO_M, 0.0]),
-        np.pi,
+        np.array(
+            [r2_actual * np.cos(dnu) / AU_TO_M, r2_actual * np.sin(dnu) / AU_TO_M]
+        ),
+        dnu,
         hohmann_tof,
     )
 
@@ -383,8 +355,8 @@ def search_transfer(
     """
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 
-    tof_fractions = np.linspace(0.01, 0.999, 200)
-    dnu_values = np.linspace(0.01, np.pi - 0.05, 100)
+    tof_fractions = np.linspace(0.01, 1.0, 200)
+    dnu_values = np.linspace(0.01, np.pi, 100)
 
     dep_nu = -dep_rot
     r1_actual = compute_r2_actual(r1, dep_ecc, dep_nu)
@@ -424,7 +396,7 @@ def search_transfer(
 
     if best is not None and min_tof is not None:
         dnu_values_fine = np.linspace(
-            max(0.01, best[1] - 0.1), min(np.pi - 0.05, best[1] + 0.1), 50
+            max(0.01, best[1] - 0.1), min(np.pi, best[1] + 0.1), 50
         )
         for dnu in dnu_values_fine:
             orbit_angle = dnu - target_rot
@@ -495,7 +467,7 @@ def compute_fast_trajectory(r1, r2, target_dv, target_ecc, target_rot, dep_ecc, 
     )
 
     if best is None:
-        return _hohmann_fallback(r1, r2, points)
+        return _hohmann_fallback(r1, r2, points, target_ecc, target_rot)
 
     tof, dnu, v1, r1_vec, r2_actual = best
     positions, _ = integrate_trajectory(r1_vec, v1, tof, points)

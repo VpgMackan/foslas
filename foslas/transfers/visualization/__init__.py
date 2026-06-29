@@ -153,9 +153,11 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
         else:
             future_time = hohmann_tof_s / 86400.0
 
-        planet_x, planet_y = propagate_orbit_position(
-            bodies_data[1], arr_lon, arr_rotation, future_time
+        future_r, future_lon = get_body_ecliptic(
+            bodies_data[1]["englishName"], time_offset_days=future_time
         )
+        planet_x = future_r * np.cos(future_lon)
+        planet_y = future_r * np.sin(future_lon)
 
         ax.plot(
             planet_x,
