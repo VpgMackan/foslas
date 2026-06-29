@@ -22,9 +22,11 @@ from .core import (
     plot_transfer,
     propagate_orbit_position,
 )
+from .animate import animate_transfer
 
 __all__ = [
     "visualize",
+    "animate_transfer",
     "plot_orbit",
     "plot_transfer",
     "get_body_ecliptic",
