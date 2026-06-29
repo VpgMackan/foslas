@@ -6,10 +6,7 @@
 
 ```bash
 # Install dependencies
-pip install numpy scipy matplotlib requests python-dotenv
-
-# Fetch celestial body data
-python scripts/fetch_data.py
+pip install numpy scipy matplotlib astropy
 
 # Compute transfer statistics
 foslas stats terre mars -d 15
@@ -100,7 +97,7 @@ v = √(GM × (2/r - 1/a))
 
 ## Data Sources
 
-- Celestial body data: [le-systeme-solaire.net](https://api.le-systeme-solaire.net)
+- Celestial body positions: Astropy solar system ephemerides
 - Energy data: [Our World in Data](https://github.com/owid/energy-data)
 
 ## References

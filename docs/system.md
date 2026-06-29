@@ -9,17 +9,14 @@
 ```
 foslas/
 ├── cli.py                  # CLI entry point (argparse)
-├── data/
-│   └── data.json           # Cached celestial body data
 ├── foslas/                 # Core library package
 │   ├── __init__.py         # Public API re-exports
 │   ├── constants.py        # Physical constants & unit conversions
 │   ├── integrator.py       # Numerical ODE integrator (2-body problem)
 │   ├── lambert.py          # Lambert's problem solver
-│   ├── orbital.py          # Orbital mechanics (Hohmann, transfer search)
-│   └── viz.py              # Matplotlib visualization
-├── scripts/
-│   └── fetch_data.py       # Fetches body data from solar system API
+│   └── transfers/          # Transfer models + visualization modules
+├── data/
+│   └── data.json           # Legacy cached body data (optional)
 └── docs/                   # Documentation
 ```
 
@@ -30,11 +27,11 @@ foslas/
 │                        Data Pipeline                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  scripts/fetch_data.py                                          │
+│  Astropy ephemerides (runtime)                                  │
 │       │                                                         │
 │       ▼                                                         │
-│  le-systeme-solaire.net API ──→ data/data.json                 │
-│       (HTTP + Bearer token)      (cached JSON)                  │
+│  load_bodies() computes a, e, aphelion/perihelion               │
+│  from heliocentric state vectors                                │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -82,8 +79,7 @@ All internal calculations use SI units (meters, seconds). The CLI and visualizat
 - **NumPy** — Array operations, linear algebra, trigonometric functions
 - **SciPy** — Root-finding (`brentq`), ODE integration (`solve_ivp`), statistics
 - **Matplotlib** — Trajectory visualization
-- **requests** — API calls for data fetching
-- **python-dotenv** — Environment variable management
+- **Astropy** — Solar system ephemerides and unit conversions
 
 ## CLI Commands
 
@@ -122,12 +118,12 @@ foslas list [-s search_query]
 
 ## Body Data Format
 
-Each body in `data/data.json` has the following structure:
+Each body loaded at runtime has the following structure:
 
 ```json
 {
-  "id": "terre",
-  "name": "La Terre",
+  "id": "earth",
+  "name": "Earth",
   "semimajorAxis": 149598023,
   "perihelion": 147095000,
   "aphelion": 152100000,
@@ -138,4 +134,4 @@ Each body in `data/data.json` has the following structure:
 ```
 
 - `apogee` and `perigee` are computed from `semimajorAxis × (1 ± eccentricity)`
-- French names are used (e.g., "terre", "mars", "jupiter")
+- Legacy aliases like `terre` and `saturne` are still supported in the CLI

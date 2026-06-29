@@ -5,8 +5,9 @@ trajectory plots, and listing available celestial bodies.
 """
 
 import argparse
-import json
 import sys
+
+import numpy as np
 
 from foslas.constants import KM_TO_M
 from foslas.transfers.base import OrbitalBody
@@ -14,7 +15,16 @@ from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
 from foslas.transfers.base import transfer_time
 
-DATA_PATH = "data/data.json"
+_BODY_SPECS = [
+    ("mercury", "mercury", "Mercury", ["mercure"]),
+    ("venus", "venus", "Venus", []),
+    ("earth", "earth", "Earth", ["terre"]),
+    ("mars", "mars", "Mars", []),
+    ("jupiter", "jupiter", "Jupiter", []),
+    ("saturn", "saturn", "Saturn", ["saturne"]),
+    ("uranus", "uranus", "Uranus", []),
+    ("neptune", "neptune", "Neptune", []),
+]
 
 
 def _orbit_params(body):
@@ -41,15 +51,74 @@ def _orbit_params(body):
 
 
 def load_bodies():
-    """Load celestial body data from the JSON file.
+    """Load celestial body data from Astropy ephemerides.
 
     Returns
     -------
     list of dict
         List of body data dictionaries.
     """
-    with open(DATA_PATH) as f:
-        return json.load(f)["bodies"]
+    try:
+        import astropy.units as u
+        from astropy.constants import G, M_sun
+        from astropy.coordinates import get_body_barycentric_posvel
+        from astropy.time import Time
+    except ModuleNotFoundError:
+        print("Error: astropy is required. Install with: pip install astropy")
+        sys.exit(1)
+
+    def _elements_from_state(r_m, v_m_s, mu):
+        r = np.linalg.norm(r_m)
+        v = np.linalg.norm(v_m_s)
+        h = np.cross(r_m, v_m_s)
+        e_vec = np.cross(v_m_s, h) / mu - (r_m / r)
+        ecc = float(np.linalg.norm(e_vec))
+        eps = v * v / 2.0 - mu / r
+        if eps >= 0:
+            return None
+        sma = -mu / (2.0 * eps)
+        return float(sma), ecc
+
+    epoch = Time.now()
+    sun_pos, sun_vel = get_body_barycentric_posvel("sun", epoch)
+    sun_pos = sun_pos.xyz.to(u.m).value
+    sun_vel = sun_vel.xyz.to(u.m / u.s).value
+    mu_sun = (G * M_sun).to_value(u.m**3 / u.s**2)
+
+    bodies = []
+    for body_id, astropy_name, english_name, aliases in _BODY_SPECS:
+        try:
+            body_pos, body_vel = get_body_barycentric_posvel(astropy_name, epoch)
+            r_vec = body_pos.xyz.to(u.m).value - sun_pos
+            v_vec = body_vel.xyz.to(u.m / u.s).value - sun_vel
+            elements = _elements_from_state(r_vec, v_vec, mu_sun)
+            if elements is None:
+                continue
+            sma_m, ecc = elements
+            sma_km = sma_m / 1000.0
+            aphelion = sma_km * (1.0 + ecc)
+            perihelion = sma_km * (1.0 - ecc)
+            bodies.append(
+                {
+                    "id": body_id,
+                    "englishName": english_name,
+                    "aliases": aliases,
+                    "semimajorAxis": sma_km,
+                    "eccentricity": ecc,
+                    "aphelion": aphelion,
+                    "perihelion": perihelion,
+                    "apogee": aphelion,
+                    "perigee": perihelion,
+                }
+            )
+        except Exception:
+            continue
+
+    if not bodies:
+        print("Error: failed to load bodies from Astropy ephemerides.")
+        sys.exit(1)
+
+    return bodies
 
 
 def find_body(bodies, body_id):
@@ -68,7 +137,19 @@ def find_body(bodies, body_id):
         The body data dictionary, or None if not found.
     """
     body_id = body_id.strip().lower()
-    return next((b for b in bodies if b["englishName"].lower() == body_id), None)
+    return next(
+        (
+            b
+            for b in bodies
+            if body_id
+            in {
+                b.get("id", "").lower(),
+                b.get("englishName", "").lower(),
+                *[a.lower() for a in b.get("aliases", [])],
+            }
+        ),
+        None,
+    )
 
 
 def get_ap_per(body):
@@ -182,8 +263,13 @@ def cmd_stats(args):
             print(f"  Need {total_hohmann / 1000:.2f} km/s, have {args.dv:.2f} km/s")
         else:
             fast_factor, fast_dv = find_factor_for_dv(
-                start_ob.sma, end_ob.sma, available_dv_m,
-                dep_ecc=dep_ecc, dep_rot=dep_rot, arr_ecc=arr_ecc, arr_rot=arr_rot,
+                start_ob.sma,
+                end_ob.sma,
+                available_dv_m,
+                dep_ecc=dep_ecc,
+                dep_rot=dep_rot,
+                arr_ecc=arr_ecc,
+                arr_rot=arr_rot,
             )
             fast_tof = transfer_time(start_ob.sma, end_ob.sma, fast_factor)
             print()
@@ -219,8 +305,13 @@ def cmd_plot(args):
     available_dv_m = args.dv * KM_TO_M if args.dv else 30.0 * KM_TO_M
     _, _, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     fast_factor, fast_dv = find_factor_for_dv(
-        start_ob.sma, end_ob.sma, available_dv_m,
-        dep_ecc=dep_ecc, dep_rot=dep_rot, arr_ecc=arr_ecc, arr_rot=arr_rot,
+        start_ob.sma,
+        end_ob.sma,
+        available_dv_m,
+        dep_ecc=dep_ecc,
+        dep_rot=dep_rot,
+        arr_ecc=arr_ecc,
+        arr_rot=arr_rot,
     )
 
     stats = {
@@ -253,8 +344,13 @@ def cmd_animate(args):
     available_dv_m = args.dv * KM_TO_M if args.dv else 30.0 * KM_TO_M
     _, _, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     fast_factor, fast_dv = find_factor_for_dv(
-        start_ob.sma, end_ob.sma, available_dv_m,
-        dep_ecc=dep_ecc, dep_rot=dep_rot, arr_ecc=arr_ecc, arr_rot=arr_rot,
+        start_ob.sma,
+        end_ob.sma,
+        available_dv_m,
+        dep_ecc=dep_ecc,
+        dep_rot=dep_rot,
+        arr_ecc=arr_ecc,
+        arr_rot=arr_rot,
     )
 
     stats = {
@@ -341,7 +437,9 @@ def main():
     )
     p_plot.set_defaults(func=cmd_plot)
 
-    p_anim = sub.add_parser("animate", help="Generate animated GIF of transfer trajectory")
+    p_anim = sub.add_parser(
+        "animate", help="Generate animated GIF of transfer trajectory"
+    )
     p_anim.add_argument("start", help="Departure body ID")
     p_anim.add_argument("end", help="Arrival body ID")
     p_anim.add_argument(
