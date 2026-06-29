@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from foslas.bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG
 from foslas.constants import KM_TO_M
 from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
@@ -15,76 +16,16 @@ from foslas.transfers.fast import find_factor_for_dv
 BODIES = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"]
 BODY_IDS = [name.lower() for name in BODIES]
 
-_BODY_SPECS = [
-    ("mercury", "mercury", "Mercury"),
-    ("venus", "venus", "Venus"),
-    ("earth", "earth", "Earth"),
-    ("mars", "mars", "Mars"),
-    ("jupiter", "jupiter", "Jupiter"),
-    ("saturn", "saturn", "Saturn"),
-    ("uranus", "uranus", "Uranus"),
-    ("neptune", "neptune", "Neptune"),
-]
 
-
-def load_bodies(day_offset=0):
-    try:
-        import astropy.units as u
-        from astropy.constants import G, M_sun
-        from astropy.coordinates import get_body_barycentric_posvel
-        from astropy.time import Time
-    except ModuleNotFoundError:
-        raise RuntimeError("astropy is required. Install with: pip install astropy")
-
-    def _elements_from_state(r_m, v_m_s, mu):
-        import numpy as np
-
-        r = np.linalg.norm(r_m)
-        v = np.linalg.norm(v_m_s)
-        h = np.cross(r_m, v_m_s)
-        e_vec = np.cross(v_m_s, h) / mu - (r_m / r)
-        ecc = float(np.linalg.norm(e_vec))
-        eps = v * v / 2.0 - mu / r
-        if eps >= 0:
-            return None
-        sma = -mu / (2.0 * eps)
-        return float(sma), ecc
-
-    epoch = Time.now() + day_offset
-    sun_pos, sun_vel = get_body_barycentric_posvel("sun", epoch)
-    sun_pos = sun_pos.xyz.to(u.m).value
-    sun_vel = sun_vel.xyz.to(u.m / u.s).value
-    mu_sun = (G * M_sun).to_value(u.m**3 / u.s**2)
-
-    bodies = []
-    for body_id, astropy_name, english_name in _BODY_SPECS:
-        try:
-            body_pos, body_vel = get_body_barycentric_posvel(astropy_name, epoch)
-            r_vec = body_pos.xyz.to(u.m).value - sun_pos
-            v_vec = body_vel.xyz.to(u.m / u.s).value - sun_vel
-            elements = _elements_from_state(r_vec, v_vec, mu_sun)
-            if elements is None:
-                continue
-            sma_m, ecc = elements
-            sma_km = sma_m / 1000.0
-            aphelion = sma_km * (1.0 + ecc)
-            perihelion = sma_km * (1.0 - ecc)
-            bodies.append(
-                {
-                    "id": body_id,
-                    "englishName": english_name,
-                    "semimajorAxis": sma_km,
-                    "eccentricity": ecc,
-                    "aphelion": aphelion,
-                    "perihelion": perihelion,
-                }
-            )
-        except Exception:
-            continue
-
-    if not bodies:
-        raise RuntimeError("Failed to load bodies from Astropy ephemerides.")
-    return bodies
+def find_asteroid(body_id):
+    """Find an asteroid by ID or englishName in the asteroid catalog."""
+    body_id_lower = body_id.strip().lower()
+    for aid, data in ASTEROID_CATALOG.items():
+        if body_id_lower == aid:
+            return load_asteroid_body(aid)
+        if body_id_lower == data.get("englishName", "").lower():
+            return load_asteroid_body(aid)
+    return None
 
 
 def find_body(bodies, name):
@@ -110,9 +51,13 @@ def _orbit_params(body, day_offset=0):
 
 
 def compute_transfer(start_name, end_name, dv_km_s, day_offset):
-    bodies = load_bodies(day_offset)
-    start = find_body(bodies, start_name)
-    end = find_body(bodies, end_name)
+    bodies = load_planet_bodies(day_offset)
+    start = find_asteroid(start_name)
+    if start is None:
+        start = find_body(bodies, start_name)
+    end = find_asteroid(end_name)
+    if end is None:
+        end = find_body(bodies, end_name)
 
     if not start:
         raise ValueError(f"Body '{start_name}' not found.")
@@ -227,4 +172,4 @@ with gr.Blocks(title="foslas - Orbital Transfer Calculator") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(share=True)

@@ -4,6 +4,7 @@ A Python library for computing interplanetary transfer trajectories
 between celestial bodies in the solar system.
 """
 
+from .bodies import load_planet_bodies, load_asteroid_body
 from .constants import G, M_SUN, GM_SUN, KM_TO_M, AU_TO_M, AU_TO_KM, SEC_TO_DAY
 from .lambert import lambert_solve
 from .integrator import two_body_ode, integrate_trajectory
@@ -18,6 +19,7 @@ from .transfers.visualization import (
 )
 
 __all__ = [
+    "load_planet_bodies", "load_asteroid_body",
     "G", "M_SUN", "GM_SUN", "KM_TO_M", "AU_TO_M", "AU_TO_KM", "SEC_TO_DAY",
     "lambert_solve",
     "two_body_ode", "integrate_trajectory",

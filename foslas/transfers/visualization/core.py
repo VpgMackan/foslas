@@ -12,14 +12,24 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
 import pykep as pk
-
-import pykep as pk
 from datetime import datetime, timedelta
 
 from ...constants import AU_TO_KM, AU_TO_M, GM_SUN
 
 
+def _datetime_to_jd(dt):
+    """Convert datetime to Julian date."""
+    return dt.timestamp() / 86400.0 + 2440587.5
+
+
 def get_body_ecliptic(body_name, time_offset_days=0):
+    from ...bodies import compute_asteroid_ephemeris, ASTEROID_CATALOG
+
+    body_name_lower = body_name.lower().replace(" ", "_")
+    if body_name_lower in ASTEROID_CATALOG:
+        jd = _datetime_to_jd(datetime.now().utcnow() + timedelta(days=time_offset_days))
+        return compute_asteroid_ephemeris(body_name_lower, jd)
+
     now = datetime.now().utcnow() + timedelta(days=time_offset_days)
     jd = now.timestamp() / 86400.0 + 2440587.5
     days_since_j2000 = jd - 2451545.0
