@@ -19,6 +19,29 @@ from foslas.orbital import (
 DATA_PATH = "data/data.json"
 
 
+def _orbit_params(body):
+    """Compute eccentricity and ecliptic rotation for a body.
+
+    Parameters
+    ----------
+    body : dict
+        Body data dictionary with aphelion, perihelion, englishName.
+
+    Returns
+    -------
+    tuple of float
+        (eccentricity, rotation_angle) where rotation_angle is in radians.
+    """
+    from foslas.viz import get_body_ecliptic, compute_orbit_rotation
+
+    aph = body.get("aphelion", 0)
+    peri = body.get("perihelion", 0)
+    ecc = (aph - peri) / (aph + peri) if (aph + peri) > 0 else 0.0
+    r_au, lon = get_body_ecliptic(body["englishName"])
+    rotation = compute_orbit_rotation(body, lon, r_au)
+    return ecc, rotation - lon
+
+
 def load_bodies():
     """Load celestial body data from the JSON file.
 
@@ -139,6 +162,9 @@ def cmd_stats(args):
     dv_dep, dv_arr, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     hohmann_tof = transfer_time(start_ob.sma, end_ob.sma, 1.0)
 
+    dep_ecc, dep_rot = _orbit_params(start)
+    arr_ecc, arr_rot = _orbit_params(end)
+
     available_dv_m = args.dv * KM_TO_M if args.dv else None
 
     print(f"\nTransfer: {start['englishName']} -> {end['englishName']}")
@@ -158,7 +184,8 @@ def cmd_stats(args):
             print(f"  Need {total_hohmann / 1000:.2f} km/s, have {args.dv:.2f} km/s")
         else:
             fast_factor, fast_dv = find_factor_for_dv(
-                start_ob.sma, end_ob.sma, available_dv_m
+                start_ob.sma, end_ob.sma, available_dv_m,
+                dep_ecc=dep_ecc, dep_rot=dep_rot, arr_ecc=arr_ecc, arr_rot=arr_rot,
             )
             fast_tof = transfer_time(start_ob.sma, end_ob.sma, fast_factor)
             print()
@@ -188,9 +215,15 @@ def cmd_plot(args):
 
     start, end, start_ob, end_ob = resolve_bodies(args.start, args.end)
 
+    dep_ecc, dep_rot = _orbit_params(start)
+    arr_ecc, arr_rot = _orbit_params(end)
+
     available_dv_m = args.dv * KM_TO_M if args.dv else 30.0 * KM_TO_M
     _, _, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
-    fast_factor, fast_dv = find_factor_for_dv(start_ob.sma, end_ob.sma, available_dv_m)
+    fast_factor, fast_dv = find_factor_for_dv(
+        start_ob.sma, end_ob.sma, available_dv_m,
+        dep_ecc=dep_ecc, dep_rot=dep_rot, arr_ecc=arr_ecc, arr_rot=arr_rot,
+    )
 
     stats = {
         "hohmann_dv": total_hohmann / 1000,

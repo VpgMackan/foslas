@@ -16,13 +16,17 @@ import astropy.units as u
 from astropy.coordinates import get_body
 from astropy.time import Time
 
-from .constants import AU_TO_KM, AU_TO_M
+from .constants import AU_TO_KM, AU_TO_M, GM_SUN
 from .orbital import hohmann_delta_v, compute_transfer_trajectory
+from .lambert import lambert_solve
+from .integrator import integrate_trajectory
 
 
-def get_body_ecliptic(body_name):
-    time = Time.strptime("2012-Jun-30 23:59:60", "%Y-%b-%d %H:%M:%S")
-    # time = Time.now()
+def get_body_ecliptic(body_name, time_offset_days=0):
+    time = Time.now()
+    # time = Time.strptime("2012-Jun-30 23:59:60", "%Y-%b-%d %H:%M:%S")
+    if time_offset_days != 0:
+        time = time + time_offset_days * u.day
     ecl = get_body(body_name, time).heliocentricmeanecliptic
     return ecl.distance.to(u.au).value, ecl.lon.rad
 
@@ -65,6 +69,23 @@ def plot_orbit(ax, body_data, rotation=0):
         label=f"Orbit for {body_data['englishName']}",
     )
 
+    arrow_theta = np.pi / 3
+    arrow_r = (a * (1 - e**2)) / (1 + e * np.cos(arrow_theta))
+    px = arrow_r * np.cos(arrow_theta + rotation) / AU_TO_KM
+    py = arrow_r * np.sin(arrow_theta + rotation) / AU_TO_KM
+    dx = -np.sin(arrow_theta + rotation) * 0.05
+    dy = np.cos(arrow_theta + rotation) * 0.05
+    ax.add_patch(
+        FancyArrowPatch(
+            (px - dx, py - dy),
+            (px + dx, py + dy),
+            arrowstyle="->",
+            color="black",
+            mutation_scale=10,
+            lw=1.0,
+        )
+    )
+
 
 def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
     """Plot a transfer trajectory with departure and arrival markers.
@@ -105,6 +126,51 @@ def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
         )
 
 
+def _propagate_orbit_position(body_data, current_lon, current_rotation, dt_days):
+    """Propagate a body along its orbit by a time offset in days."""
+    sma_km = body_data.get("semimajorAxis", 0)
+    aph = body_data.get("aphelion", 0)
+    peri = body_data.get("perihelion", 0)
+    if sma_km <= 0 or (aph + peri) <= 0:
+        r = body_data.get("semimajorAxis", 0) / AU_TO_KM
+        return r * np.cos(current_lon), r * np.sin(current_lon)
+
+    a = sma_km * 1000.0
+    e = (aph - peri) / (aph + peri)
+    if e < 1e-10:
+        angle = current_lon + 2 * np.pi * (dt_days / 365.25)
+        r = a / AU_TO_M
+        return r * np.cos(angle), r * np.sin(angle)
+
+    nu0 = current_lon - current_rotation
+    sin_half_nu0 = np.sin(nu0 / 2.0)
+    cos_half_nu0 = np.cos(nu0 / 2.0)
+    E0 = 2.0 * np.arctan2(
+        np.sqrt(1 - e) * sin_half_nu0,
+        np.sqrt(1 + e) * cos_half_nu0,
+    )
+    M0 = E0 - e * np.sin(E0)
+    mean_motion = np.sqrt(GM_SUN / a**3)
+    M1 = M0 + mean_motion * dt_days * 86400.0
+
+    E = M1
+    for _ in range(20):
+        f = E - e * np.sin(E) - M1
+        fp = 1 - e * np.cos(E)
+        delta = -f / fp
+        E += delta
+        if abs(delta) < 1e-12:
+            break
+
+    r = a * (1 - e * np.cos(E)) / AU_TO_M
+    nu = 2.0 * np.arctan2(
+        np.sqrt(1 + e) * np.sin(E / 2.0),
+        np.sqrt(1 - e) * np.cos(E / 2.0),
+    )
+    angle = current_rotation + nu
+    return r * np.cos(angle), r * np.sin(angle)
+
+
 def visualize(r1, r2, target_dv, bodies_data, stats=None):
     """Create a complete visualization of orbital transfer trajectories.
 
@@ -139,6 +205,12 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
         else 0.0
     )
 
+    dep_aph = bodies_data[0].get("aphelion", 0)
+    dep_peri = bodies_data[0].get("perihelion", 0)
+    dep_ecc = (
+        (dep_aph - dep_peri) / (dep_aph + dep_peri) if (dep_aph + dep_peri) > 0 else 0.0
+    )
+
     dep_r, dep_lon = get_body_ecliptic(bodies_data[0]["englishName"])
     arr_r, arr_lon = get_body_ecliptic(bodies_data[1]["englishName"])
 
@@ -156,37 +228,53 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     plot_orbit(ax, bodies_data[0], rotation=dep_rotation)
     plot_orbit(ax, bodies_data[1], rotation=arr_rotation)
 
-    a_a = (bodies_data[1]["aphelion"] + bodies_data[1]["perihelion"]) / 2
-    e_a = (bodies_data[1]["aphelion"] - bodies_data[1]["perihelion"]) / (
-        bodies_data[1]["aphelion"] + bodies_data[1]["perihelion"]
+    dep_sma_m = bodies_data[0].get("semimajorAxis", 0) * 1000.0
+    arr_sma_m = bodies_data[1].get("semimajorAxis", 0) * 1000.0
+
+    _, _, hohmann_dv = hohmann_delta_v(dep_sma_m, arr_sma_m)
+    x_h, y_h, dep_h, arr_h, nu_h, hohmann_tof_s = compute_transfer_trajectory(
+        dep_sma_m,
+        arr_sma_m,
+        hohmann_dv,
+        target_ecc=e_end,
+        target_rot=arr_rotation - dep_lon,
+        dep_ecc=dep_ecc,
+        dep_rot=dep_rotation - dep_lon,
     )
-
-    r1_m = dep_r * AU_TO_M
-    r2_arrival_angle = dep_lon + np.pi - arr_rotation
-    r2_m = a_a * (1 - e_a**2) / (1 + e_a * np.cos(r2_arrival_angle)) * 1000
-
-    _, _, hohmann_dv = hohmann_delta_v(r1_m, r2_m)
-    x_h, y_h, dep_h, arr_h, nu_h = compute_transfer_trajectory(r1_m, r2_m, hohmann_dv)
 
     x_h, y_h = _rotate(x_h, y_h, dep_lon)
     dep_h = np.array(_rotate(dep_h[0], dep_h[1], dep_lon))
     arr_h = np.array(_rotate(arr_h[0], arr_h[1], dep_lon))
 
-    plot_transfer(
-        ax, x_h, y_h, dep_h, arr_h, "Hohmann Transfer", "cyan", linestyle="--"
-    )
+    # plot_transfer(
+    #     ax, x_h, y_h, dep_h, arr_h, "Hohmann Transfer", "cyan", linestyle="--"
+    # )
 
+    fast_tof_s = None
     if target_dv > hohmann_dv + 1.0:
-        x_f, y_f, dep_f, arr_f, nu_f = compute_transfer_trajectory(
-            r1_m,
-            a_a * 1000,
+        dep_rot = dep_rotation - dep_lon
+        x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = compute_transfer_trajectory(
+            dep_sma_m,
+            arr_sma_m,
             target_dv,
             target_ecc=e_end,
             target_rot=arr_rotation - dep_lon,
+            dep_ecc=dep_ecc,
+            dep_rot=dep_rotation - dep_lon,
         )
-        x_f, y_f = _rotate(x_f, y_f, dep_lon)
-        dep_f = np.array(_rotate(dep_f[0], dep_f[1], dep_lon))
-        arr_f = np.array(_rotate(arr_f[0], arr_f[1], dep_lon))
+        future_r, future_lon = get_body_ecliptic(
+            bodies_data[1]["englishName"], time_offset_days=fast_tof_s / 86400.0
+        )
+        r1_vec = np.array([dep_r * np.cos(dep_lon), dep_r * np.sin(dep_lon), 0.0]) * AU_TO_M
+        r2_vec = np.array(
+            [future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]
+        ) * AU_TO_M
+        v1, v2 = lambert_solve(r1_vec, r2_vec, fast_tof_s)
+        positions, _ = integrate_trajectory(r1_vec, v1, fast_tof_s, 500)
+        x_f = positions[:, 0] / AU_TO_M
+        y_f = positions[:, 1] / AU_TO_M
+        dep_f = np.array([r1_vec[0] / AU_TO_M, r1_vec[1] / AU_TO_M])
+        arr_f = np.array([r2_vec[0] / AU_TO_M, r2_vec[1] / AU_TO_M])
         plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
 
     ax.plot([], [], "g^", markersize=10, label="Departure Burn")
@@ -203,19 +291,36 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     )
 
     if stats:
-        from .orbital import transfer_time
-
-        actual_hohmann_time = transfer_time(r1_m, r2_m, 1.0)
-        actual_hohmann_dv = hohmann_dv / 1000
-
         actual_fast_dv = stats["fast_dv"]
         actual_fast_factor = stats["fast_factor"]
-        actual_fast_time = transfer_time(r1_m, a_a * 1000, actual_fast_factor)
+        actual_fast_time = (
+            fast_tof_s / 86400.0 if fast_tof_s is not None else hohmann_tof_s / 86400.0
+        )
+        actual_hohmann_time = hohmann_tof_s / 86400.0
+
+        if target_dv > hohmann_dv + 1.0:
+            future_time = actual_fast_time
+        else:
+            future_time = actual_hohmann_time
+
+        planet_x, planet_y = _propagate_orbit_position(
+            bodies_data[1], arr_lon, arr_rotation, future_time
+        )
+
+        ax.plot(
+            planet_x,
+            planet_y,
+            marker="o",
+            linestyle="None",
+            color="green",
+            markersize=8,
+            label=f"{bodies_data[1].get('englishName')} future",
+        )
 
         stats_text = (
-            "--- Hohmann Transfer ---\n"
-            f"Dv required: {actual_hohmann_dv:.2f} km/s\n"
-            f"Est. time:    {actual_hohmann_time:.1f} days\n\n"
+            # "--- Hohmann Transfer ---\n"
+            # f"Dv required: {actual_hohmann_dv:.2f} km/s\n"
+            # f"Est. time:    {actual_hohmann_time:.1f} days\n\n"
             "--- Fast Transfer ---\n"
             f"Dv used:       {actual_fast_dv:.2f} km/s\n"
             f"Energy factor: {actual_fast_factor:.2f}\n"
