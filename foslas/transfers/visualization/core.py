@@ -11,20 +11,26 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
+import pykep as pk
 
-import astropy.units as u
-from astropy.coordinates import get_body
-from astropy.time import Time
+import pykep as pk
+from datetime import datetime, timedelta
 
 from ...constants import AU_TO_KM, AU_TO_M, GM_SUN
 
 
 def get_body_ecliptic(body_name, time_offset_days=0):
-    time = Time.now()
-    if time_offset_days != 0:
-        time = time + time_offset_days * u.day
-    ecl = get_body(body_name, time).heliocentricmeanecliptic
-    return ecl.distance.to(u.au).value, ecl.lon.rad
+    now = datetime.utcnow() + timedelta(days=time_offset_days)
+    epoch = pk.epoch_from_string(now.strftime("%Y-%m-%d %H:%M:%S"))
+
+    planet = pk.planet.jpl_lp(body_name)
+    r, _ = planet.eph(epoch)
+
+    x, y, z = r
+    distance_au = np.sqrt(x**2 + y**2 + z**2) / pk.AU
+    longitude_rad = np.arctan2(y, x)
+
+    return distance_au, longitude_rad
 
 
 def compute_orbit_rotation(body_data, planet_lon, planet_r_au):
