@@ -8,8 +8,10 @@ formulation with Stumpff functions and Brent's root-finding method.
 import numpy as np
 import pykep as pk
 
+from .constants import GM_SUN
 
-def lambert_solve(r1_vec, r2_vec, tof, mu=pk.MU_SUN):
+
+def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
     r1 = list(r1_vec)
     r2 = list(r2_vec)
     lp = pk.lambert_problem(r1, r2, tof, mu)

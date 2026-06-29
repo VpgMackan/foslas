@@ -83,7 +83,7 @@ def compute_r2_actual(r2, target_ecc, orbit_angle):
     Parameters
     ----------
     r2 : float
-        Nominal radius in meters.
+        Semi-major axis of the orbit in meters.
     target_ecc : float
         Eccentricity of the target orbit.
     orbit_angle : float

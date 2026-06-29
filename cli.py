@@ -244,6 +244,14 @@ def cmd_stats(args):
     dep_ecc, dep_rot = _orbit_params(start)
     arr_ecc, arr_rot = _orbit_params(end)
 
+    dep_aph = start.get("aphelion", 0)
+    dep_peri = start.get("perihelion", 0)
+    dep_ecc_val = (dep_aph - dep_peri) / (dep_aph + dep_peri) if (dep_aph + dep_peri) > 0 else 0.0
+    arr_aph = end.get("aphelion", 0)
+    arr_peri = end.get("perihelion", 0)
+    arr_ecc_val = (arr_aph - arr_peri) / (arr_aph + arr_peri) if (arr_aph + arr_peri) > 0 else 0.0
+    ecc_warning = dep_ecc_val > 0.05 or arr_ecc_val > 0.05
+
     available_dv_m = args.dv * KM_TO_M if args.dv else None
 
     print(f"\nTransfer: {start['englishName']} -> {end['englishName']}")
@@ -256,6 +264,12 @@ def cmd_stats(args):
     print(
         f"  Transfer time:     {hohmann_tof:.1f} days ({hohmann_tof / 365.25:.2f} years)"
     )
+    if ecc_warning:
+        print()
+        print("  NOTE: Hohmann delta-V above is a circularized reference.")
+        print(f"  {start['englishName']} eccentricity: {dep_ecc_val:.4f}, "
+              f"{end['englishName']} eccentricity: {arr_ecc_val:.4f}")
+        print("  Actual delta-V depends on the bodies' positions in their orbits.")
 
     if available_dv_m is not None:
         if available_dv_m < total_hohmann - 1:

@@ -110,31 +110,54 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     fast_tof_s = None
     if target_dv > hohmann_dv + 1.0:
         dep_rot = dep_rotation - dep_lon
-        x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = compute_transfer_trajectory(
-            dep_sma_m,
-            arr_sma_m,
-            target_dv,
-            target_ecc=e_end,
-            target_rot=arr_rotation - dep_lon,
-            dep_ecc=dep_ecc,
-            dep_rot=dep_rotation - dep_lon,
-        )
-        future_r, future_lon = get_body_ecliptic(
-            bodies_data[1]["englishName"], time_offset_days=fast_tof_s / 86400.0
-        )
-        r1_vec = np.array([dep_r * np.cos(dep_lon), dep_r * np.sin(dep_lon), 0.0]) * AU_TO_M
-        r2_vec = np.array(
-            [future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]
-        ) * AU_TO_M
-        from ...lambert import lambert_solve
-        from ...integrator import integrate_trajectory
-        v1, v2 = lambert_solve(r1_vec, r2_vec, fast_tof_s)
-        positions, _ = integrate_trajectory(r1_vec, v1, fast_tof_s, 500)
-        x_f = positions[:, 0] / AU_TO_M
-        y_f = positions[:, 1] / AU_TO_M
-        dep_f = np.array([r1_vec[0] / AU_TO_M, r1_vec[1] / AU_TO_M])
-        arr_f = np.array([r2_vec[0] / AU_TO_M, r2_vec[1] / AU_TO_M])
-        plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
+        try:
+            result = compute_transfer_trajectory(
+                dep_sma_m,
+                arr_sma_m,
+                target_dv,
+                target_ecc=e_end,
+                target_rot=arr_rotation - dep_lon,
+                dep_ecc=dep_ecc,
+                dep_rot=dep_rotation - dep_lon,
+            )
+            if result is None:
+                fast_tof_s = None
+            else:
+                x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = result
+        except Exception:
+            fast_tof_s = None
+
+        if fast_tof_s is not None:
+            try:
+                future_r, future_lon = get_body_ecliptic(
+                    bodies_data[1]["englishName"], time_offset_days=fast_tof_s / 86400.0
+                )
+                r1_vec = np.array([dep_r * np.cos(dep_lon), dep_r * np.sin(dep_lon), 0.0]) * AU_TO_M
+                r2_vec = np.array(
+                    [future_r * np.cos(future_lon), future_r * np.sin(future_lon), 0.0]
+                ) * AU_TO_M
+                from ...lambert import lambert_solve
+                from ...integrator import integrate_trajectory
+                v1, v2 = lambert_solve(r1_vec, r2_vec, fast_tof_s)
+                from ...constants import GM_SUN
+                r1_mag = np.linalg.norm(r1_vec)
+                v1_mag = np.linalg.norm(v1)
+                specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
+                if specific_energy >= 0:
+                    fast_tof_s = None
+                else:
+                    a_transfer = -GM_SUN / (2.0 * specific_energy)
+                    if a_transfer <= 0:
+                        fast_tof_s = None
+                    else:
+                        positions, _ = integrate_trajectory(r1_vec, v1, fast_tof_s, 500)
+                        x_f = positions[:, 0] / AU_TO_M
+                        y_f = positions[:, 1] / AU_TO_M
+                        dep_f = np.array([r1_vec[0] / AU_TO_M, r1_vec[1] / AU_TO_M])
+                        arr_f = np.array([r2_vec[0] / AU_TO_M, r2_vec[1] / AU_TO_M])
+                        plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
+            except (ValueError, ZeroDivisionError):
+                fast_tof_s = None
 
     ax.plot([], [], "g^", markersize=10, label="Departure Burn")
     ax.plot([], [], "ms", markersize=10, label="Arrival Burn")
@@ -155,7 +178,7 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
         display_fast_time = stats["fast_time"]
         display_hohmann_time = stats["hohmann_time"]
 
-        if target_dv > hohmann_dv + 1.0:
+        if fast_tof_s is not None:
             future_time = fast_tof_s / 86400.0
         else:
             future_time = hohmann_tof_s / 86400.0

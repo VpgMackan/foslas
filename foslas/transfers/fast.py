@@ -4,6 +4,8 @@ Provides functions for computing faster transfers that use more delta-V
 than the minimum-energy Hohmann transfer.
 """
 
+import logging
+
 import numpy as np
 from scipy.optimize import brentq
 
@@ -11,6 +13,8 @@ from ..constants import GM_SUN, AU_TO_M
 from ..lambert import lambert_solve
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual, planet_velocity
+
+logger = logging.getLogger(__name__)
 
 
 def calc_dv_for_factor(
@@ -167,7 +171,7 @@ def search_transfer(
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 
     tof_fractions = np.linspace(0.05, 0.95, 60)
-    dnu_values = np.linspace(0.3, np.pi - 0.05, 40)
+    dnu_values = np.linspace(0.01, np.pi - 0.05, 100)
 
     dep_nu = -dep_rot
     r1_actual = compute_r2_actual(r1, dep_ecc, dep_nu)
@@ -190,10 +194,25 @@ def search_transfer(
             dv_arr = np.linalg.norm(v2 - v_planet_arr)
             total_dv = dv_dep + dv_arr
             if total_dv <= target_dv:
+                r1_mag = np.linalg.norm(r1_vec)
+                v1_mag = np.linalg.norm(v1)
+                specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
+                if specific_energy >= 0:
+                    continue
+                a_transfer = -GM_SUN / (2.0 * specific_energy)
+                if a_transfer <= 0:
+                    continue
                 if best is None or tof < best[0]:
                     best = (tof, dnu, v1, r1_vec, r2_actual)
         if best is not None:
             break
+
+    if best is None:
+        logger.debug(
+            "search_transfer exhausted: r1=%.3e, r2=%.3e, target_dv=%.3e — "
+            "no Lambert solution with valid semi-major axis found within budget",
+            r1, r2, target_dv,
+        )
 
     return best, hohmann_tof
 
@@ -244,6 +263,32 @@ def compute_fast_trajectory(r1, r2, target_dv, target_ecc, target_rot, dep_ecc, 
         try:
             v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
         except ValueError:
+            from .hohmann import hohmann_trajectory
+            x, y = hohmann_trajectory(r1, r2, points)
+            return (
+                x,
+                y,
+                np.array([r1 / AU_TO_M, 0.0]),
+                np.array([-r2 / AU_TO_M, 0.0]),
+                np.pi,
+                hohmann_tof,
+            )
+        r1_mag = np.linalg.norm(r1_vec)
+        v1_mag = np.linalg.norm(v1)
+        specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
+        if specific_energy >= 0:
+            from .hohmann import hohmann_trajectory
+            x, y = hohmann_trajectory(r1, r2, points)
+            return (
+                x,
+                y,
+                np.array([r1 / AU_TO_M, 0.0]),
+                np.array([-r2 / AU_TO_M, 0.0]),
+                np.pi,
+                hohmann_tof,
+            )
+        a_transfer = -GM_SUN / (2.0 * specific_energy)
+        if a_transfer <= 0:
             from .hohmann import hohmann_trajectory
             x, y = hohmann_trajectory(r1, r2, points)
             return (

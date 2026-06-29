@@ -95,6 +95,30 @@ def compute_transfer_trajectory(
                 np.pi,
                 hohmann_tof,
             )
+        r1_mag = np.linalg.norm(r1_vec)
+        v1_mag = np.linalg.norm(v1)
+        specific_energy = v1_mag**2 / 2.0 - GM_SUN / r1_mag
+        if specific_energy >= 0:
+            x, y = hohmann_trajectory(r1, r2, points)
+            return (
+                x,
+                y,
+                np.array([r1 / AU_TO_M, 0.0]),
+                np.array([-r2 / AU_TO_M, 0.0]),
+                np.pi,
+                hohmann_tof,
+            )
+        a_transfer = -GM_SUN / (2.0 * specific_energy)
+        if a_transfer <= 0:
+            x, y = hohmann_trajectory(r1, r2, points)
+            return (
+                x,
+                y,
+                np.array([r1 / AU_TO_M, 0.0]),
+                np.array([-r2 / AU_TO_M, 0.0]),
+                np.pi,
+                hohmann_tof,
+            )
         best = (tof, dnu, v1, r1_vec, r2_actual)
 
     tof, dnu, v1, r1_vec, r2_actual = best

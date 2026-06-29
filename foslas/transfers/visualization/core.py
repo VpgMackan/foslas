@@ -111,6 +111,13 @@ def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
     linestyle : str, optional
         Line style (default: "-").
     """
+    if x is None or y is None or dep is None or arr is None:
+        return
+    if len(x) == 0 or len(y) == 0:
+        return
+    if not (np.any(np.isfinite(x)) and np.any(np.isfinite(y))):
+        return
+
     ax.plot(x, y, linestyle=linestyle, color=color, linewidth=2, label=label)
     ax.plot(dep[0], dep[1], marker="^", color=color, markersize=10, zorder=5)
     ax.plot(arr[0], arr[1], marker="s", color=color, markersize=10, zorder=5)
@@ -118,16 +125,17 @@ def plot_transfer(ax, x, y, dep, arr, label, color, linestyle="-"):
     n = len(x)
     if n > 10:
         i = n // 4
-        ax.add_patch(
-            FancyArrowPatch(
-                (x[i], y[i]),
-                (x[i + 2], y[i + 2]),
-                arrowstyle="->",
-                color=color,
-                mutation_scale=15,
-                lw=1.5,
+        if i + 2 < n:
+            ax.add_patch(
+                FancyArrowPatch(
+                    (x[i], y[i]),
+                    (x[i + 2], y[i + 2]),
+                    arrowstyle="->",
+                    color=color,
+                    mutation_scale=15,
+                    lw=1.5,
+                )
             )
-        )
 
 
 def propagate_orbit_position(body_data, current_lon, current_rotation, dt_days):
