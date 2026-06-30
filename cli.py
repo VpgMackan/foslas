@@ -296,6 +296,51 @@ def cmd_plot(args):
     print(f"Plot saved to {output}")
 
 
+def cmd_porkchop(args):
+    """Handle the 'porkchop' subcommand.
+
+    Generates a porkchop plot sweeping launch dates × TOFs for a given
+    departure/arrival pair, with optional Δv budget analysis.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from datetime import datetime
+    from foslas.porkchop import (
+        compute_porkchop,
+        plot_porkchop,
+        plot_porkchop_budget,
+        summarize,
+    )
+
+    start_date = datetime.strptime(args.start_date, "%Y-%m-%d") if args.start_date else None
+
+    print(f"Computing porkchop: {args.start} → {args.end} ...")
+    result = compute_porkchop(
+        args.start,
+        args.end,
+        start_date=start_date,
+        num_dates=args.num_dates,
+        date_step=args.date_step,
+        tof_min=args.tof_min,
+        tof_max=args.tof_max,
+        num_tofs=args.num_tofs,
+    )
+
+    print(summarize(result, dv_budget=args.dv))
+
+    if args.dv is not None:
+        fig, _, _ = plot_porkchop_budget(result, args.dv)
+    else:
+        fig = plot_porkchop(result)
+
+    plt.savefig(args.output, dpi=150, bbox_inches="tight")
+    plt.close("all")
+    print(f"\nPlot saved to {args.output}")
+
+
 def cmd_list(args):
     """Handle the 'list' subcommand.
 
@@ -357,6 +402,28 @@ def main():
         help="Output file (default: transfer.png)",
     )
     p_plot.set_defaults(func=cmd_plot)
+
+    p_porkchop = sub.add_parser("porkchop", help="Generate porkchop launch window plot")
+    p_porkchop.add_argument("start", help="Departure body ID (e.g. earth, mars)")
+    p_porkchop.add_argument("end", help="Arrival body ID (e.g. mars, jupiter)")
+    p_porkchop.add_argument(
+        "-s", "--start-date", default=None,
+        help="First launch date, YYYY-MM-DD (default: today)",
+    )
+    p_porkchop.add_argument(
+        "-d", "--dv", type=float, default=None,
+        help="Δv budget in km/s; if set, show fastest-transfer analysis",
+    )
+    p_porkchop.add_argument(
+        "-o", "--output", default="porkchop.png",
+        help="Output file (default: porkchop.png)",
+    )
+    p_porkchop.add_argument("--num-dates", type=int, default=146, help="Number of launch dates to sweep")
+    p_porkchop.add_argument("--date-step", type=int, default=5, help="Days between launch dates")
+    p_porkchop.add_argument("--tof-min", type=int, default=50, help="Minimum TOF in days")
+    p_porkchop.add_argument("--tof-max", type=int, default=400, help="Maximum TOF in days")
+    p_porkchop.add_argument("--num-tofs", type=int, default=71, help="Number of TOF samples")
+    p_porkchop.set_defaults(func=cmd_porkchop)
 
     p_list = sub.add_parser("list", help="List available celestial bodies")
     p_list.add_argument(
