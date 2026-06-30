@@ -1,6 +1,6 @@
 import numpy as np
 
-from .constants import GM_SUN, AU_TO_M
+from .constants import GM_SUN, AU_TO_M, AU_TO_KM
 from .math_utils import solve_kepler, true_anomaly_from_eccentric_anomaly
 
 ASTEROID_CATALOG = {
@@ -149,7 +149,6 @@ def keplerian_to_state(a_au, ecc, inc_deg, omega_deg, w_deg, M0_deg, epoch_jd, t
     z = sin_inc * sin_w * x_orb + sin_inc * cos_w * y_orb
 
     lon = np.arctan2(y, x)
-    lat = np.arcsin(z / np.sqrt(x**2 + y**2 + z**2))
     r_au = np.sqrt(x**2 + y**2 + z**2) / AU_TO_M
 
     return r_au, lon
@@ -207,8 +206,6 @@ def load_asteroid_body(asteroid_id):
     ecc = ast["ecc"]
     aphelion_au = a_au * (1 + ecc)
     perihelion_au = a_au * (1 - ecc)
-
-    from .constants import AU_TO_KM
 
     return {
         "id": asteroid_id,

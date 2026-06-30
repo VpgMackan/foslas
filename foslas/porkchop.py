@@ -316,24 +316,20 @@ def summarize(result, dv_budget=None):
     ]
 
     if dv_budget is not None:
-        fastest_tof = np.full(len(result.launch_days), np.nan)
-        fastest_dv = np.full(len(result.launch_days), np.nan)
-        for i in range(len(result.launch_days)):
-            row = grid[i, :]
-            feasible_mask = row <= dv_budget
-            if np.any(feasible_mask):
-                fastest_idx = np.where(feasible_mask)[0][0]
-                fastest_tof[i] = tof_days[fastest_idx]
-                fastest_dv[i] = row[fastest_idx]
+        feasible = grid <= dv_budget
+        tof_grid = np.broadcast_to(tof_days, grid.shape)
+        masked_tof = np.where(feasible, tof_grid, np.inf)
+        fastest_tof = np.nanmin(masked_tof, axis=1)
+        row_indices = np.nanargmin(masked_tof, axis=1)
+        has_data = np.isfinite(fastest_tof)
 
-        has_data = ~np.isnan(fastest_tof)
         if np.any(has_data):
             best = np.nanargmin(fastest_tof)
             lines.extend([
                 f"\nFastest at Δv ≤ {dv_budget} km/s:",
                 f"  TOF: {fastest_tof[best]:.0f} days",
                 f"  Launch: {date_labels[best].strftime('%Y-%m-%d')}",
-                f"  Δv used: {fastest_dv[best]:.2f} km/s",
+                f"  Δv used: {grid[best, row_indices[best]]:.2f} km/s",
             ])
         else:
             lines.append(f"\nNo feasible transfers at Δv ≤ {dv_budget} km/s")
@@ -399,20 +395,22 @@ def get_feasible_windows(result, dv_budget=None, max_windows=500):
     date_labels = result.date_labels
     tof_days = result.tof_days
 
-    windows = []
-    for i in range(len(result.launch_days)):
-        for j in range(len(tof_days)):
-            dv = grid[i, j]
-            if np.isfinite(dv):
-                if dv_budget is None or dv <= dv_budget:
-                    windows.append((
-                        date_labels[i],
-                        tof_days[j],
-                        dv,
-                    ))
+    if dv_budget is not None:
+        feasible = np.isfinite(grid) & (grid <= dv_budget)
+    else:
+        feasible = np.isfinite(grid)
 
-    windows.sort(key=lambda w: w[2])
-    return windows[:max_windows]
+    if not np.any(feasible):
+        return []
+
+    rows, cols = np.where(feasible)
+    dvs = grid[rows, cols]
+    order = np.argsort(dvs)
+    windows = [
+        (date_labels[rows[k]], tof_days[cols[k]], dvs[k])
+        for k in order[:max_windows]
+    ]
+    return windows
 
 
 def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):

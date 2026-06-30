@@ -14,7 +14,7 @@ from ...constants import AU_TO_KM, AU_TO_M
 from ..hohmann import hohmann_delta_v
 from ..fast import search_transfer_ecliptic
 from .. import compute_transfer_trajectory
-from ..base import compute_r2_actual, planet_velocity
+from ..base import compute_r2_actual, planet_velocity, compute_eccentricity, hohmann_tof
 from .core import (
     get_body_ecliptic,
     compute_orbit_rotation,
@@ -61,16 +61,17 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     ax.plot(0, 0, "yo", label="Sun", markersize=15)
 
     e_end = (
-        (bodies_data[1].get("aphelion", 0) - bodies_data[1].get("perihelion", 0))
-        / (bodies_data[1].get("aphelion", 0) + bodies_data[1].get("perihelion", 0))
+        compute_eccentricity(
+            bodies_data[1].get("aphelion", 0),
+            bodies_data[1].get("perihelion", 0),
+        )
         if len(bodies_data) > 1
         else 0.0
     )
 
-    dep_aph = bodies_data[0].get("aphelion", 0)
-    dep_peri = bodies_data[0].get("perihelion", 0)
-    dep_ecc = (
-        (dep_aph - dep_peri) / (dep_aph + dep_peri) if (dep_aph + dep_peri) > 0 else 0.0
+    dep_ecc = compute_eccentricity(
+        bodies_data[0].get("aphelion", 0),
+        bodies_data[0].get("perihelion", 0),
     )
 
     dep_r, dep_lon = get_body_ecliptic(bodies_data[0]["englishName"])

@@ -13,7 +13,10 @@ from foslas.constants import KM_TO_M
 from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
-from foslas.utils import find_body, find_asteroid, resolve_bodies, ASTEROID_CATALOG
+from foslas.utils import (
+    find_body, find_asteroid, resolve_bodies, resolve_body_data,
+    orbit_params, compute_eccentricity, ASTEROID_CATALOG,
+)
 
 STAT_BOX_STYLE = (
     "background:#1f2937;border:1px solid #374151;border-radius:8px;"
@@ -59,28 +62,13 @@ ALL_BODIES = BODIES + sorted(ASTEROID_NAMES)
 BODY_IDS = [name.lower().replace(" ", "_") for name in BODIES]
 
 
-def _orbit_params(body, day_offset=0):
-    from foslas.transfers.visualization import get_body_ecliptic, compute_orbit_rotation
-
-    aph = body.get("aphelion", 0)
-    peri = body.get("perihelion", 0)
-    ecc = (aph - peri) / (aph + peri) if (aph + peri) > 0 else 0.0
-    r_au, lon = get_body_ecliptic(body["englishName"], time_offset_days=day_offset)
-    rotation = compute_orbit_rotation(body, lon, r_au)
-    return ecc, rotation - lon
-
-
 def compute_transfer(start_name, end_name, dv_km_s, day_offset):
     from foslas.bodies import load_planet_bodies
     from foslas.transfers.visualization import visualize
 
     bodies = load_planet_bodies(day_offset)
-    start = find_asteroid(start_name)
-    if start is None:
-        start = find_body(bodies, start_name)
-    end = find_asteroid(end_name)
-    if end is None:
-        end = find_body(bodies, end_name)
+    start = resolve_body_data(start_name)
+    end = resolve_body_data(end_name)
 
     if not start:
         raise ValueError(f"Body '{start_name}' not found.")
@@ -93,8 +81,8 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
     dv_dep, dv_arr, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     hohmann_tof = transfer_time(start_ob.sma, end_ob.sma, 1.0)
 
-    dep_ecc, dep_rot = _orbit_params(start, day_offset)
-    arr_ecc, arr_rot = _orbit_params(end, day_offset)
+    dep_ecc, dep_rot = orbit_params(start, day_offset)
+    arr_ecc, arr_rot = orbit_params(end, day_offset)
 
     available_dv_m = dv_km_s * KM_TO_M
 
@@ -208,24 +196,20 @@ def run_porkchop_generate(
         )
 
         if dv is not None:
-            fastest_tof = np.full(len(result.launch_days), np.nan)
-            fastest_dv = np.full(len(result.launch_days), np.nan)
-            for i in range(len(result.launch_days)):
-                row = grid[i, :]
-                feasible_mask = row <= dv
-                if np.any(feasible_mask):
-                    fastest_idx = np.where(feasible_mask)[0][0]
-                    fastest_tof[i] = tof_days[fastest_idx]
-                    fastest_dv[i] = row[fastest_idx]
+            feasible = grid <= dv
+            tof_grid = np.broadcast_to(tof_days, grid.shape)
+            masked_tof = np.where(feasible, tof_grid, np.inf)
+            fastest_tof = np.nanmin(masked_tof, axis=1)
+            row_indices = np.nanargmin(masked_tof, axis=1)
+            has_data = np.isfinite(fastest_tof)
 
-            has_data = ~np.isnan(fastest_tof)
             if np.any(has_data):
                 best = np.nanargmin(fastest_tof)
                 fast_row = _stats_grid(
                     _stat_box("Δv Budget", f"≤ {dv:.0f} km/s"),
                     _stat_box("Fastest TOF", f"{fastest_tof[best]:.0f} days"),
                     _stat_box("Launch Date", date_labels[best].strftime("%Y-%m-%d")),
-                    _stat_box("Δv Used", f"{fastest_dv[best]:.2f} km/s"),
+                    _stat_box("Δv Used", f"{grid[best, row_indices[best]]:.2f} km/s"),
                 )
                 porkchop_html += (
                     f'<p style="font-size:0.85em;color:#9ca3af;margin:12px 0 8px 0;">'
@@ -258,8 +242,8 @@ def run_porkchop_generate(
                 start, end, launch_date, tof_days_selected
             )
 
-            dep_data = _resolve_body_data(start)
-            arr_data = _resolve_body_data(end)
+            dep_data = resolve_body_data(start)
+            arr_data = resolve_body_data(end)
 
             if dep_data is None or arr_data is None:
                 transfer_stats = '<p style="color:#ef4444;">Could not resolve body data for plotting.</p>'
@@ -306,45 +290,29 @@ def _pick_window(result, criterion, dv_budget=None):
     date_labels = result.date_labels
     tof_days = result.tof_days
 
-    best_dv = np.inf
-    best_i, best_j = 0, 0
-    found = False
+    feasible = np.isfinite(grid)
+    if dv_budget is not None:
+        feasible &= (grid <= dv_budget)
 
-    for i in range(len(result.launch_days)):
-        for j in range(len(tof_days)):
-            dv = grid[i, j]
-            if not np.isfinite(dv):
-                continue
-            if dv_budget is not None and dv > dv_budget:
-                continue
-
-            if criterion == "Nearest launch date":
-                if not found or date_labels[i] < date_labels[best_i]:
-                    best_i, best_j = i, j
-                    found = True
-            elif criterion == "Shortest transfer time":
-                if not found or tof_days[j] < tof_days[best_j]:
-                    best_i, best_j = i, j
-                    found = True
-            elif criterion == "Lowest Δv":
-                if not found or dv < best_dv:
-                    best_i, best_j = i, j
-                    best_dv = dv
-                    found = True
-
-    if not found:
+    if not np.any(feasible):
         return None, None
-    return date_labels[best_i], tof_days[best_j]
 
+    masked_grid = np.where(feasible, grid, np.inf)
 
-def _resolve_body_data(body_id):
-    from foslas.bodies import load_planet_bodies
+    if criterion == "Nearest launch date":
+        launch_idx = np.arange(len(result.launch_days))
+        launch_2d = np.broadcast_to(launch_idx[:, None], grid.shape)
+        score = np.where(feasible, launch_2d.astype(float), np.inf)
+        best = np.unravel_index(np.argmin(score), grid.shape)
+    elif criterion == "Shortest transfer time":
+        tof_2d = np.broadcast_to(tof_days, grid.shape)
+        score = np.where(feasible, tof_2d, np.inf)
+        best = np.unravel_index(np.argmin(score), grid.shape)
+    else:
+        best = np.unravel_index(np.argmin(masked_grid), grid.shape)
 
-    bodies = load_planet_bodies()
-    bd = find_asteroid(body_id)
-    if bd is None:
-        bd = find_body(bodies, body_id)
-    return bd
+    return date_labels[best[0]], tof_days[best[1]]
+
 
 
 import gradio as gr

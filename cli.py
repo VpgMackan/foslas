@@ -14,30 +14,7 @@ from foslas.transfers.base import OrbitalBody
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
 from foslas.transfers.base import transfer_time
-from foslas.utils import resolve_bodies, find_body, find_asteroid
-
-
-def _orbit_params(body):
-    """Compute eccentricity and ecliptic rotation for a body.
-
-    Parameters
-    ----------
-    body : dict
-        Body data dictionary with aphelion, perihelion, englishName.
-
-    Returns
-    -------
-    tuple of float
-        (eccentricity, rotation_angle) where rotation_angle is in radians.
-    """
-    from foslas.transfers.visualization import get_body_ecliptic, compute_orbit_rotation
-
-    aph = body.get("aphelion", 0)
-    peri = body.get("perihelion", 0)
-    ecc = (aph - peri) / (aph + peri) if (aph + peri) > 0 else 0.0
-    r_au, lon = get_body_ecliptic(body["englishName"])
-    rotation = compute_orbit_rotation(body, lon, r_au)
-    return ecc, rotation - lon
+from foslas.utils import resolve_bodies, find_body, find_asteroid, orbit_params, compute_eccentricity
 
 
 def get_ap_per(body):
@@ -87,18 +64,14 @@ def cmd_stats(args):
     dv_dep, dv_arr, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
     hohmann_tof = transfer_time(start_ob.sma, end_ob.sma, 1.0)
 
-    dep_ecc, dep_rot = _orbit_params(start)
-    arr_ecc, arr_rot = _orbit_params(end)
+    dep_ecc, dep_rot = orbit_params(start)
+    arr_ecc, arr_rot = orbit_params(end)
 
-    dep_aph = start.get("aphelion", 0)
-    dep_peri = start.get("perihelion", 0)
-    dep_ecc_val = (
-        (dep_aph - dep_peri) / (dep_aph + dep_peri) if (dep_aph + dep_peri) > 0 else 0.0
+    dep_ecc_val = compute_eccentricity(
+        start.get("aphelion", 0), start.get("perihelion", 0)
     )
-    arr_aph = end.get("aphelion", 0)
-    arr_peri = end.get("perihelion", 0)
-    arr_ecc_val = (
-        (arr_aph - arr_peri) / (arr_aph + arr_peri) if (arr_aph + arr_peri) > 0 else 0.0
+    arr_ecc_val = compute_eccentricity(
+        end.get("aphelion", 0), end.get("perihelion", 0)
     )
     ecc_warning = dep_ecc_val > 0.05 or arr_ecc_val > 0.05
 
@@ -165,8 +138,8 @@ def cmd_plot(args):
 
     start, end, start_ob, end_ob = resolve_bodies(args.start, args.end)
 
-    dep_ecc, dep_rot = _orbit_params(start)
-    arr_ecc, arr_rot = _orbit_params(end)
+    dep_ecc, dep_rot = orbit_params(start)
+    arr_ecc, arr_rot = orbit_params(end)
 
     available_dv_m = args.dv * KM_TO_M if args.dv else 30.0 * KM_TO_M
     _, _, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)

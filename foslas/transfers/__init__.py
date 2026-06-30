@@ -8,10 +8,10 @@ import numpy as np
 
 from ..constants import GM_SUN, AU_TO_M, HOHMANN_DV_TOLERANCE, CIRCULAR_ECC_TOLERANCE
 from ..integrator import integrate_trajectory
-from .base import compute_r2_actual
+from .base import compute_r2_actual, hohmann_tof
 from .base import OrbitalBody, transfer_time
 from .hohmann import hohmann_delta_v, hohmann_trajectory
-from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, compute_fast_trajectory, search_transfer_ecliptic
+from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, search_transfer_ecliptic
 
 
 __all__ = [
@@ -23,7 +23,6 @@ __all__ = [
     "hohmann_trajectory",
     "calc_dv_for_factor",
     "search_transfer",
-    "compute_fast_trajectory",
     "search_transfer_ecliptic",
 ]
 
@@ -71,7 +70,7 @@ def compute_transfer_trajectory(
         dnu is the arrival true anomaly, and tof is the transfer time in seconds.
     """
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
-    hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
+    ht = hohmann_tof(r1, r2)
 
     if abs(target_dv - dv_total_h) < HOHMANN_DV_TOLERANCE and target_ecc < CIRCULAR_ECC_TOLERANCE and dep_ecc < CIRCULAR_ECC_TOLERANCE:
         x, y = hohmann_trajectory(r1, r2, points)
@@ -81,7 +80,7 @@ def compute_transfer_trajectory(
             np.array([r1 / AU_TO_M, 0.0]),
             np.array([-r2 / AU_TO_M, 0.0]),
             np.pi,
-            hohmann_tof,
+            ht,
         )
 
     best, _ = search_transfer(

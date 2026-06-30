@@ -7,7 +7,7 @@ between two circular orbits.
 import numpy as np
 
 from ..constants import GM_SUN, AU_TO_M
-from .base import transfer_time
+from .base import hohmann_tof
 
 
 def hohmann_delta_v(r1, r2):

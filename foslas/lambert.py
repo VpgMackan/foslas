@@ -12,10 +12,7 @@ from .constants import GM_SUN
 
 
 def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
-    r1 = list(r1_vec)
-    r2 = list(r2_vec)
-    lp = pk.lambert_problem(r1, r2, tof, mu)
-    # Index 0 = prograde, single-rev solution
+    lp = pk.lambert_problem(r1_vec, r2_vec, tof, mu)
     v1 = np.array(lp.v0[0])
     v2 = np.array(lp.v1[0])
     return v1, v2

@@ -9,6 +9,17 @@ import numpy as np
 from ..constants import GM_SUN, KM_TO_M, AU_TO_M, SEC_TO_DAY
 
 
+def compute_eccentricity(aphelion, perihelion):
+    """Compute orbital eccentricity from aphelion and perihelion distances."""
+    denom = aphelion + perihelion
+    return (aphelion - perihelion) / denom if denom > 0 else 0.0
+
+
+def hohmann_tof(r1, r2):
+    """Compute Hohmann transfer time in seconds."""
+    return np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
+
+
 class OrbitalBody:
     """Represents a celestial body with an elliptical orbit.
 

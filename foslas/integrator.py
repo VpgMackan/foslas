@@ -26,14 +26,15 @@ def two_body_ode(t, state):
         Derivatives [vx, vy, vz, ax, ay, az].
     """
     r3 = (state[0] ** 2 + state[1] ** 2 + state[2] ** 2) ** 1.5
-    return [
+    inv_r3 = 1.0 / r3
+    return np.array([
         state[3],
         state[4],
         state[5],
-        -GM_SUN * state[0] / r3,
-        -GM_SUN * state[1] / r3,
-        -GM_SUN * state[2] / r3,
-    ]
+        -GM_SUN * state[0] * inv_r3,
+        -GM_SUN * state[1] * inv_r3,
+        -GM_SUN * state[2] * inv_r3,
+    ])
 
 
 def integrate_trajectory(r_vec, v_vec, tof, points=500):

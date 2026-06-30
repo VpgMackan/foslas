@@ -15,6 +15,7 @@ import pykep as pk
 from datetime import datetime, timedelta
 
 from ...constants import AU_TO_KM, AU_TO_M, GM_SUN, JD_EPOCH_OFFSET
+from ..base import compute_eccentricity
 
 
 def _datetime_to_jd(dt):
@@ -47,9 +48,7 @@ def get_body_ecliptic(body_name, time_offset_days=0):
 
 def compute_orbit_rotation(body_data, planet_lon, planet_r_au):
     a = (body_data["aphelion"] + body_data["perihelion"]) / 2
-    e = (body_data["aphelion"] - body_data["perihelion"]) / (
-        body_data["aphelion"] + body_data["perihelion"]
-    )
+    e = compute_eccentricity(body_data["aphelion"], body_data["perihelion"])
     if e < 1e-10:
         return planet_lon
     planet_r_km = planet_r_au * AU_TO_KM
@@ -71,9 +70,7 @@ def plot_orbit(ax, body_data, rotation=0):
         Rotation angle in radians (default: 0).
     """
     a = (body_data["aphelion"] + body_data["perihelion"]) / 2
-    e = (body_data["aphelion"] - body_data["perihelion"]) / (
-        body_data["aphelion"] + body_data["perihelion"]
-    )
+    e = compute_eccentricity(body_data["aphelion"], body_data["perihelion"])
     theta = np.linspace(0, 2 * np.pi, 1000)
     r = (a * (1 - e**2)) / (1 + e * np.cos(theta))
     ax.plot(
@@ -158,7 +155,7 @@ def propagate_orbit_position(body_data, current_lon, current_rotation, dt_days):
         return r * np.cos(current_lon), r * np.sin(current_lon)
 
     a = sma_km * 1000.0
-    e = (aph - peri) / (aph + peri)
+    e = compute_eccentricity(aph, peri)
     if e < 1e-10:
         angle = current_lon + 2 * np.pi * (dt_days / 365.25)
         r = a / AU_TO_M

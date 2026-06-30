@@ -21,14 +21,14 @@ from .porkchop import (
 )
 from .transfers.base import OrbitalBody, transfer_time
 from .transfers.hohmann import hohmann_delta_v, hohmann_trajectory
-from .transfers.fast import find_factor_for_dv, compute_fast_trajectory
+from .transfers.fast import find_factor_for_dv
 from .transfers import compute_transfer_trajectory
 from .transfers.visualization import (
     visualize,
     plot_orbit,
     plot_transfer,
 )
-from .utils import find_body, find_asteroid, resolve_bodies
+from .utils import find_body, find_asteroid, resolve_bodies, resolve_body_data, orbit_params
 
 __all__ = [
     "load_planet_bodies", "load_asteroid_body",
@@ -39,7 +39,7 @@ __all__ = [
     "compute_lambert_trajectory", "plot_lambert_trajectory", "get_feasible_windows",
     "PorkchopResult", "LambertTrajectory",
     "OrbitalBody", "hohmann_delta_v", "transfer_time", "find_factor_for_dv",
-    "compute_transfer_trajectory", "compute_fast_trajectory",
+    "compute_transfer_trajectory",
     "plot_orbit", "plot_transfer", "visualize",
-    "find_body", "find_asteroid", "resolve_bodies",
+    "find_body", "find_asteroid", "resolve_bodies", "resolve_body_data", "orbit_params",
 ]

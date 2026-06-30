@@ -6,6 +6,12 @@ Provides common functions used by both CLI and UI modules.
 from .bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG
 
 
+def compute_eccentricity(aphelion, perihelion):
+    """Compute orbital eccentricity from aphelion and perihelion distances."""
+    denom = aphelion + perihelion
+    return (aphelion - perihelion) / denom if denom > 0 else 0.0
+
+
 def find_body(bodies, body_id):
     """Find a body by its ID (case-insensitive).
 
@@ -101,8 +107,45 @@ def resolve_bodies(start_id, end_id):
     return start, end, start_ob, end_ob
 
 
+def resolve_body_data(body_id):
+    """Resolve a body ID to its data dict (checks asteroids then planets)."""
+    bodies = load_planet_bodies()
+    bd = find_asteroid(body_id)
+    if bd is None:
+        bd = find_body(bodies, body_id)
+    return bd
+
+
+def orbit_params(body, day_offset=0):
+    """Compute eccentricity and ecliptic rotation for a body.
+
+    Parameters
+    ----------
+    body : dict
+        Body data dictionary with aphelion, perihelion, englishName.
+    day_offset : int, optional
+        Days offset from current time (default: 0).
+
+    Returns
+    -------
+    tuple of float
+        (eccentricity, rotation_angle) where rotation_angle is in radians.
+    """
+    from .transfers.visualization import get_body_ecliptic, compute_orbit_rotation
+
+    ecc = compute_eccentricity(
+        body.get("aphelion", 0), body.get("perihelion", 0)
+    )
+    r_au, lon = get_body_ecliptic(body["englishName"], time_offset_days=day_offset)
+    rotation = compute_orbit_rotation(body, lon, r_au)
+    return ecc, rotation - lon
+
+
 __all__ = [
+    "compute_eccentricity",
     "find_body",
     "find_asteroid",
     "resolve_bodies",
+    "resolve_body_data",
+    "orbit_params",
 ]
