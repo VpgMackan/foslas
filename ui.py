@@ -13,8 +13,7 @@ from foslas.constants import KM_TO_M
 from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
-from foslas.utils import find_body, find_asteroid, resolve_bodies
-
+from foslas.utils import find_body, find_asteroid, resolve_bodies, ASTEROID_CATALOG
 
 STAT_BOX_STYLE = (
     "background:#1f2937;border:1px solid #374151;border-radius:8px;"
@@ -244,7 +243,9 @@ def run_porkchop_generate(
         else:
             fig = plot_porkchop(result)
 
-        porkchop_plot_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+        porkchop_plot_path = tempfile.NamedTemporaryFile(
+            suffix=".png", delete=False
+        ).name
         fig.savefig(porkchop_plot_path, dpi=150, bbox_inches="tight")
         plt.close("all")
 
@@ -253,7 +254,9 @@ def run_porkchop_generate(
             transfer_stats = '<p style="color:#f59e0b;">No feasible transfer found for this criterion.</p>'
             transfer_plot = None
         else:
-            traj = compute_lambert_trajectory(start, end, launch_date, tof_days_selected)
+            traj = compute_lambert_trajectory(
+                start, end, launch_date, tof_days_selected
+            )
 
             dep_data = _resolve_body_data(start)
             arr_data = _resolve_body_data(end)
@@ -264,7 +267,9 @@ def run_porkchop_generate(
             else:
                 fig = plot_lambert_trajectory(traj, dep_data, arr_data)
 
-                transfer_plot = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+                transfer_plot = tempfile.NamedTemporaryFile(
+                    suffix=".png", delete=False
+                ).name
                 fig.savefig(transfer_plot, dpi=150, bbox_inches="tight")
                 plt.close("all")
 
@@ -288,7 +293,12 @@ def run_porkchop_generate(
         return porkchop_html, porkchop_plot_path, transfer_stats, transfer_plot
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
-        return f'<p style="color:#ef4444;">Error occurred: {e}</p>', None, f'<p style="color:#ef4444;">Error occurred: {e}</p>', None
+        return (
+            f'<p style="color:#ef4444;">Error occurred: {e}</p>',
+            None,
+            f'<p style="color:#ef4444;">Error occurred: {e}</p>',
+            None,
+        )
 
 
 def _pick_window(result, criterion, dv_budget=None):
@@ -386,7 +396,9 @@ with gr.Blocks(title="foslas - Orbital Transfer Calculator") as demo:
                 value="Lowest Δv",
                 label="Optimize Transfer For",
             )
-            generate_btn = gr.Button("Generate Porkchop & Plot Transfer", variant="primary")
+            generate_btn = gr.Button(
+                "Generate Porkchop & Plot Transfer", variant="primary"
+            )
 
         with gr.Column(scale=1):
             porkchop_stats = gr.HTML(label="Porkchop Summary")

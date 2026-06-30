@@ -6,7 +6,7 @@ coordinating between Hohmann and fast Lambert-based transfers.
 
 import numpy as np
 
-from ..constants import GM_SUN, AU_TO_M
+from ..constants import GM_SUN, AU_TO_M, HOHMANN_DV_TOLERANCE, CIRCULAR_ECC_TOLERANCE
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual
 from .base import OrbitalBody, transfer_time
@@ -73,7 +73,7 @@ def compute_transfer_trajectory(
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
     hohmann_tof = np.pi * np.sqrt(((r1 + r2) / 2) ** 3 / GM_SUN)
 
-    if abs(target_dv - dv_total_h) < 1.0 and target_ecc < 1e-10 and dep_ecc < 1e-10:
+    if abs(target_dv - dv_total_h) < HOHMANN_DV_TOLERANCE and target_ecc < CIRCULAR_ECC_TOLERANCE and dep_ecc < CIRCULAR_ECC_TOLERANCE:
         x, y = hohmann_trajectory(r1, r2, points)
         return (
             x,

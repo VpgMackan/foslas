@@ -14,12 +14,12 @@ import numpy as np
 import pykep as pk
 from datetime import datetime, timedelta
 
-from ...constants import AU_TO_KM, AU_TO_M, GM_SUN
+from ...constants import AU_TO_KM, AU_TO_M, GM_SUN, JD_EPOCH_OFFSET
 
 
 def _datetime_to_jd(dt):
     """Convert datetime to Julian date."""
-    return dt.timestamp() / 86400.0 + 2440587.5
+    return dt.timestamp() / 86400.0 + JD_EPOCH_OFFSET
 
 
 def get_body_ecliptic(body_name, time_offset_days=0):

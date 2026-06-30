@@ -4,11 +4,12 @@ Provides shared numerical functions used across the codebase.
 """
 
 import numpy as np
+from scipy.optimize import newton
 
-from .constants import GM_SUN, KEPLER_MAX_ITERATIONS, KEPLER_TOLERANCE
+from .constants import GM_SUN
 
 
-def solve_kepler(M, e, max_iterations=KEPLER_MAX_ITERATIONS, tolerance=KEPLER_TOLERANCE):
+def solve_kepler(M, e, tol=1e-12):
     """Solve Kepler's equation M = E - e*sin(E) for E.
 
     Parameters
@@ -17,25 +18,15 @@ def solve_kepler(M, e, max_iterations=KEPLER_MAX_ITERATIONS, tolerance=KEPLER_TO
         Mean anomaly in radians.
     e : float
         Eccentricity (0 <= e < 1 for elliptical orbits).
-    max_iterations : int, optional
-        Maximum number of iterations (default: KEPLER_MAX_ITERATIONS).
-    tolerance : float, optional
-        Convergence tolerance (default: KEPLER_TOLERANCE).
+    tol : float, optional
+        Convergence tolerance (default: 1e-12).
 
     Returns
     -------
     float
         Eccentric anomaly E in radians.
     """
-    E = M
-    for _ in range(max_iterations):
-        f = E - e * np.sin(E) - M
-        fp = 1 - e * np.cos(E)
-        delta = -f / fp
-        E += delta
-        if abs(delta) < tolerance:
-            break
-    return E
+    return newton(lambda E: E - e * np.sin(E) - M, M, tol=tol)
 
 
 def true_anomaly_from_eccentric_anomaly(E, e):

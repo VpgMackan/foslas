@@ -16,11 +16,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pykep as pk
 
-from .constants import GM_SUN, AU_TO_M, AU_TO_KM
+from .constants import GM_SUN, AU_TO_M, AU_TO_KM, J2000_JD, JD_EPOCH_OFFSET
 from .bodies import ASTEROID_CATALOG
 from .integrator import integrate_trajectory
-
-J2000_JD = 2451545.0
 
 
 def _make_pykep_planet(name):
@@ -41,7 +39,7 @@ def _make_pykep_planet(name):
 
 
 def _date_to_epoch(dt):
-    jd = dt.timestamp() / 86400.0 + 2440587.5
+    jd = dt.timestamp() / 86400.0 + JD_EPOCH_OFFSET
     return pk.epoch(jd - J2000_JD)
 
 

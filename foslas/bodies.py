@@ -1,5 +1,3 @@
-import sys
-
 import numpy as np
 
 from .constants import GM_SUN, AU_TO_M
@@ -239,12 +237,11 @@ def load_planet_bodies(day_offset=0):
     """
     try:
         import astropy.units as u
-        from astropy.constants import G, M_sun
+        from astropy.constants import G as G_ASTRO, M_sun
         from astropy.coordinates import get_body_barycentric_posvel
         from astropy.time import Time, TimeDelta
     except ModuleNotFoundError:
-        print("Error: astropy is required. Install with: pip install astropy")
-        sys.exit(1)
+        raise ImportError("astropy is required. Install with: pip install astropy")
 
     def _elements_from_state(r_m, v_m_s, mu):
         r = np.linalg.norm(r_m)
@@ -262,7 +259,7 @@ def load_planet_bodies(day_offset=0):
     sun_pos, sun_vel = get_body_barycentric_posvel("sun", epoch)
     sun_pos = sun_pos.xyz.to(u.m).value
     sun_vel = sun_vel.xyz.to(u.m / u.s).value
-    mu_sun = (G * M_sun).to_value(u.m**3 / u.s**2)
+    mu_sun = (G_ASTRO * M_sun).to_value(u.m**3 / u.s**2)
 
     bodies = []
     for body_id, astropy_name, english_name, aliases in PLANET_SPECS:
@@ -294,7 +291,6 @@ def load_planet_bodies(day_offset=0):
             continue
 
     if not bodies:
-        print("Error: failed to load bodies from Astropy ephemerides.")
-        sys.exit(1)
+        raise RuntimeError("Failed to load bodies from Astropy ephemerides.")
 
     return bodies
