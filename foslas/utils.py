@@ -1,6 +1,6 @@
 """Shared utility functions for body resolution.
 
-Provides common functions used by both CLI and UI modules.
+Provides common functions used by the UI module.
 """
 
 from .bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG

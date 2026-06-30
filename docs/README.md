@@ -1,27 +1,24 @@
 # foslas Documentation
 
-**foslas** (Fast Orbital Solar System Lambert Solver) is a Python library and CLI tool for computing interplanetary transfer trajectories between celestial bodies in the solar system.
+**foslas** (Fast Orbital Solar System Lambert Solver) is a Python library for computing interplanetary transfer trajectories between celestial bodies in the solar system.
 
 ## Quick Start
 
 ```bash
 # Install dependencies
 pip install numpy scipy matplotlib astropy
+```
 
-# Compute transfer statistics
-foslas stats terre mars -d 15
+```python
+from foslas import compute_transfer_trajectory
 
-# Generate trajectory plot
-foslas plot terre mars -d 15 -o mars_transfer.png
-
-# List available bodies
-foslas list -s jupiter
+result = compute_transfer_trajectory("terre", "mars", dv_budget_km_s=15)
 ```
 
 ## Documentation
 
 ### System Architecture
-- [System Overview](system.md) — Project structure, data flow, CLI commands
+- [System Overview](system.md) — Project structure, data flow
 
 ### Orbital Mechanics
 - [Orbital Mechanics](orbital-mechanics.md) — Orbital elements, Hohmann transfers, energy factor scaling
