@@ -6,7 +6,7 @@ coordinating between Hohmann and fast Lambert-based transfers.
 
 import numpy as np
 
-from ..constants import GM_SUN, AU_TO_M, HOHMANN_DV_TOLERANCE, CIRCULAR_ECC_TOLERANCE
+from ..constants import AU_TO_M, HOHMANN_DV_TOLERANCE, CIRCULAR_ECC_TOLERANCE
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual, hohmann_tof
 from .base import OrbitalBody, transfer_time

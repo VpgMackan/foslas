@@ -10,11 +10,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ...constants import AU_TO_KM, AU_TO_M
 from ..hohmann import hohmann_delta_v
 from ..fast import search_transfer_ecliptic
 from .. import compute_transfer_trajectory
-from ..base import compute_r2_actual, planet_velocity, compute_eccentricity, hohmann_tof
+from ..base import compute_eccentricity
 from .core import (
     get_body_ecliptic,
     compute_orbit_rotation,

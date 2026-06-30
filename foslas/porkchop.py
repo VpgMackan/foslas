@@ -5,8 +5,11 @@ combination using Lambert's problem, producing contour plots that reveal
 optimal launch windows.
 """
 
-from dataclasses import dataclass, field
+import os
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import repeat
 
 import matplotlib
 
@@ -20,6 +23,10 @@ from .constants import GM_SUN, AU_TO_M, AU_TO_KM, J2000_JD, JD_EPOCH_OFFSET
 from .bodies import ASTEROID_CATALOG
 from .integrator import integrate_trajectory
 
+# plot_lambert_trajectory pulls in transfers.visualization.core, which itself
+# imports from this module's package -- importing at module scope creates a
+# circular import, so it stays deferred inside the function that needs it.
+
 
 def _make_pykep_planet(name):
     name_lower = name.strip().lower()
@@ -32,9 +39,13 @@ def _make_pykep_planet(name):
             w_rad = np.radians(data["w_deg"])
             M0_rad = np.radians(data["M0_deg"])
             epoch = pk.epoch(data["epoch_jd"] - J2000_JD)
-            return pk.planet(pk.udpla.keplerian(
-                epoch, [a_au * AU_TO_M, ecc, inc_rad, omega_rad, w_rad, M0_rad], GM_SUN
-            ))
+            return pk.planet(
+                pk.udpla.keplerian(
+                    epoch,
+                    [a_au * AU_TO_M, ecc, inc_rad, omega_rad, w_rad, M0_rad],
+                    GM_SUN,
+                )
+            )
     return pk.planet(pk.udpla.jpl_lp(name))
 
 
@@ -55,20 +66,50 @@ class PorkchopResult:
 
 @dataclass
 class LambertTrajectory:
-    x: np.ndarray = field(default_factory=lambda: np.array([]))
-    y: np.ndarray = field(default_factory=lambda: np.array([]))
-    dep_burn: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0]))
-    arr_burn: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0]))
-    dv_dep: float = 0.0
-    dv_arr: float = 0.0
-    dv_total: float = 0.0
-    tof_days: float = 0.0
-    launch_date: datetime = None
-    arrival_date: datetime = None
-    dep_r: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
-    arr_r: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
-    dep_v: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
-    arr_v: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
+    x: np.ndarray
+    y: np.ndarray
+    dep_burn: np.ndarray
+    arr_burn: np.ndarray
+    dv_dep: float
+    dv_arr: float
+    dv_total: float
+    tof_days: float
+    launch_date: datetime
+    arrival_date: datetime
+    dep_r: np.ndarray
+    arr_r: np.ndarray
+    dep_v: np.ndarray
+    arr_v: np.ndarray
+
+
+def _compute_row(dep_body, arr_body, t_launch_mjd2000, tof_days):
+    """Compute one launch-date row of the porkchop grid (one dv per TOF).
+
+    Runs in a worker process, so the planets are rebuilt locally from their
+    names rather than pickled in -- pykep's planet objects don't pickle
+    reliably, and reconstruction is cheap relative to the Lambert solves.
+    """
+    dep = _make_pykep_planet(dep_body)
+    arr = _make_pykep_planet(arr_body)
+
+    t_launch = pk.epoch(t_launch_mjd2000)
+    r1, v1 = dep.eph(t_launch)
+    v1 = np.array(v1)
+
+    row = np.full(len(tof_days), np.nan)
+    for j, tof_d in enumerate(tof_days):
+        t_arrive = pk.epoch(t_launch_mjd2000 + tof_d)
+        r2, v2 = arr.eph(t_arrive)
+        try:
+            lp = pk.lambert_problem(list(r1), list(r2), tof_d * 86400.0, GM_SUN)
+            dv_dep = np.linalg.norm(np.array(lp.v0[0]) - v1)
+            dv_arr = np.linalg.norm(np.array(lp.v1[0]) - np.array(v2))
+            row[j] = (dv_dep + dv_arr) / 1000.0
+        except RuntimeError:
+            # pykep raises RuntimeError when the Lambert solver fails to
+            # converge for a given geometry/TOF -- that cell just stays NaN.
+            pass
+    return row
 
 
 def compute_porkchop(
@@ -80,36 +121,32 @@ def compute_porkchop(
     tof_min=50,
     tof_max=400,
     num_tofs=71,
+    max_workers=None,
 ):
     if start_date is None:
-        start_date = datetime.now().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-
-    dep = _make_pykep_planet(dep_body)
-    arr = _make_pykep_planet(arr_body)
+        start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     launch_days = np.array([date_step * i for i in range(num_dates)])
     tof_days = np.linspace(tof_min, tof_max, num_tofs)
-    grid = np.full((num_dates, num_tofs), np.nan)
 
-    for i, d in enumerate(launch_days):
-        t_launch = _date_to_epoch(start_date + timedelta(days=float(d)))
-        r1, v1 = dep.eph(t_launch)
+    t_launches = [
+        _date_to_epoch(start_date + timedelta(days=float(d))).mjd2000
+        for d in launch_days
+    ]
 
-        for j, tof_d in enumerate(tof_days):
-            tof_sec = tof_d * 86400.0
-            t_arrive = pk.epoch(t_launch.mjd2000 + tof_d)
-            r2, v2 = arr.eph(t_arrive)
+    workers = max_workers or os.cpu_count() or 1
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        rows = list(
+            ex.map(
+                _compute_row,
+                repeat(dep_body),
+                repeat(arr_body),
+                t_launches,
+                repeat(tof_days),
+            )
+        )
 
-            try:
-                lp = pk.lambert_problem(list(r1), list(r2), tof_sec, GM_SUN)
-                dv_dep = np.linalg.norm(np.array(lp.v0[0]) - np.array(v1))
-                dv_arr = np.linalg.norm(np.array(lp.v1[0]) - np.array(v2))
-                grid[i, j] = (dv_dep + dv_arr) / 1000.0
-            except Exception:
-                pass
-
+    grid = np.array(rows)
     date_labels = [start_date + timedelta(days=float(d)) for d in launch_days]
 
     return PorkchopResult(
@@ -122,6 +159,72 @@ def compute_porkchop(
     )
 
 
+def _date_ticks(date_labels, num_dates, step=24):
+    positions = np.arange(0, num_dates, step)
+    labels = [date_labels[int(k)].strftime("%Y-%m-%d") for k in positions]
+    return positions, labels
+
+
+def _apply_date_xaxis(ax, date_labels, num_dates):
+    positions, labels = _date_ticks(date_labels, num_dates)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_xlabel("Launch date")
+
+
+def _no_data_placeholder(ax, title, fontsize=14):
+    ax.text(
+        0.5,
+        0.5,
+        "No feasible transfers found",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=fontsize,
+        color="gray",
+    )
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(title)
+
+
+def _feasible_mask(grid, dv_ceiling=50):
+    """Cells worth contouring: finite and below a sane physical ceiling."""
+    return np.isfinite(grid) & (grid < dv_ceiling)
+
+
+def _dv_contour(ax, result, levels):
+    """Shared dv contour plot used by both plot_porkchop and the budget plot."""
+    cs = ax.contourf(
+        np.arange(len(result.launch_days)),
+        result.tof_days,
+        result.grid.T,
+        levels=levels,
+        cmap="RdYlGn_r",
+    )
+    _apply_date_xaxis(ax, result.date_labels, len(result.launch_days))
+    ax.set_ylabel("Time of flight (days)")
+    return cs
+
+
+def _fastest_within_budget(grid, tof_days, dv_budget):
+    """For each launch date, the minimum TOF (and the dv it costs) with
+    dv <= dv_budget. NaN in a slot means no feasible transfer that day."""
+    feasible = grid <= dv_budget
+    tof_grid = np.broadcast_to(tof_days, grid.shape)
+    masked_tof = np.where(feasible, tof_grid, np.inf)
+
+    fastest_tof = np.nanmin(masked_tof, axis=1)
+    fastest_idx = np.nanargmin(masked_tof, axis=1)
+
+    has_data = np.isfinite(fastest_tof)
+    fastest_dv = np.full(len(grid), np.nan)
+    fastest_dv[has_data] = grid[np.arange(len(grid))[has_data], fastest_idx[has_data]]
+    fastest_tof[~has_data] = np.nan
+
+    return fastest_tof, fastest_dv
+
+
 def plot_porkchop(result, dv_budget=None, ax=None):
     fig = None
     if ax is None:
@@ -129,32 +232,17 @@ def plot_porkchop(result, dv_budget=None, ax=None):
 
     grid = result.grid
     tof_days = result.tof_days
-    num_dates = len(result.launch_days)
-    date_labels = result.date_labels
+    title = f"{result.dep_body.title()} → {result.arr_body.title()} Porkchop Plot"
 
-    tick_positions = np.arange(0, num_dates, 24)
-    tick_labels = [date_labels[int(k)].strftime("%Y-%m-%d") for k in tick_positions]
-
-    valid = np.isfinite(grid) & (grid < 50)
+    valid = _feasible_mask(grid)
     if not np.any(valid):
-        ax.text(
-            0.5, 0.5, "No feasible transfers found",
-            transform=ax.transAxes, ha="center", va="center",
-            fontsize=16, color="gray",
-        )
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title(
-            f"{result.dep_body.title()} → {result.arr_body.title()} Porkchop Plot"
-        )
+        _no_data_placeholder(ax, title, fontsize=16)
         if fig is not None:
             plt.tight_layout()
         return fig
 
     levels = np.linspace(0, np.nanmax(grid[valid]), 30)
-    cs = ax.contourf(
-        np.arange(num_dates), tof_days, grid.T, levels=levels, cmap="RdYlGn_r"
-    )
+    cs = _dv_contour(ax, result, levels)
     plt.colorbar(cs, ax=ax, label="Δv (km/s)")
 
     min_idx = np.unravel_index(np.nanargmin(grid), grid.shape)
@@ -166,13 +254,7 @@ def plot_porkchop(result, dv_budget=None, ax=None):
         label="Minimum Δv",
     )
 
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(tick_labels, rotation=45, ha="right")
-    ax.set_xlabel("Launch date")
-    ax.set_ylabel("Time of flight (days)")
-    ax.set_title(
-        f"{result.dep_body.title()} → {result.arr_body.title()} Porkchop Plot"
-    )
+    ax.set_title(title)
     ax.legend()
 
     if fig is not None:
@@ -189,35 +271,22 @@ def plot_porkchop_budget(result, dv_budget, ax_region=None, ax_fastest=None):
     grid = result.grid
     tof_days = result.tof_days
     num_dates = len(result.launch_days)
-    date_labels = result.date_labels
     tof_max = tof_days[-1]
 
-    tick_positions = np.arange(0, num_dates, 24)
-    tick_labels = [date_labels[int(k)].strftime("%Y-%m-%d") for k in tick_positions]
+    region_title = f"Feasible region (Δv ≤ {dv_budget} km/s)"
+    fastest_title = f"Fastest arrival per launch date (Δv ≤ {dv_budget} km/s)"
 
-    valid = np.isfinite(grid) & (grid < 50)
+    valid = _feasible_mask(grid)
     if not np.any(valid):
-        for ax in (ax_region, ax_fastest):
-            ax.text(
-                0.5, 0.5, "No feasible transfers found",
-                transform=ax.transAxes, ha="center", va="center",
-                fontsize=14, color="gray",
-            )
-            ax.set_xticks([])
-            ax.set_yticks([])
-        ax_region.set_title(f"Feasible region (Δv ≤ {dv_budget} km/s)")
-        ax_fastest.set_title(
-            f"Fastest arrival per launch date (Δv ≤ {dv_budget} km/s)"
-        )
+        _no_data_placeholder(ax_region, region_title)
+        _no_data_placeholder(ax_fastest, fastest_title)
         if fig is not None:
             plt.tight_layout()
         return fig, np.full(num_dates, np.nan), np.full(num_dates, np.nan)
 
     levels = np.linspace(0, np.nanmax(grid[valid]), 30)
+    _dv_contour(ax_region, result, levels)
 
-    ax_region.contourf(
-        np.arange(num_dates), tof_days, grid.T, levels=levels, cmap="RdYlGn_r"
-    )
     feasible = grid <= dv_budget
     feasible_T = feasible.T.astype(float)
     feasible_T[~feasible.T] = np.nan
@@ -238,24 +307,11 @@ def plot_porkchop_budget(result, dv_budget, ax_region=None, ax_fastest=None):
         colors="black",
         linewidths=1.5,
     )
-    ax_region.set_xticks(tick_positions)
-    ax_region.set_xticklabels(tick_labels, rotation=45, ha="right")
-    ax_region.set_xlabel("Launch date")
-    ax_region.set_ylabel("Time of flight (days)")
-    ax_region.set_title(f"Feasible region (Δv ≤ {dv_budget} km/s)")
+    ax_region.set_title(region_title)
 
-    fastest_tof = np.full(num_dates, np.nan)
-    fastest_dv = np.full(num_dates, np.nan)
-
-    for i in range(num_dates):
-        row = grid[i, :]
-        feasible_mask = row <= dv_budget
-        if np.any(feasible_mask):
-            fastest_idx = np.where(feasible_mask)[0][0]
-            fastest_tof[i] = tof_days[fastest_idx]
-            fastest_dv[i] = row[fastest_idx]
-
+    fastest_tof, fastest_dv = _fastest_within_budget(grid, tof_days, dv_budget)
     has_data = ~np.isnan(fastest_tof)
+
     ax_fastest.plot(
         np.arange(num_dates)[has_data],
         fastest_tof[has_data],
@@ -282,14 +338,10 @@ def plot_porkchop_budget(result, dv_budget, ax_region=None, ax_fastest=None):
     ax_fastest_r.set_ylabel("Δv used (km/s)", color="red")
     ax_fastest_r.tick_params(axis="y", labelcolor="red")
 
-    ax_fastest.set_xticks(tick_positions)
-    ax_fastest.set_xticklabels(tick_labels, rotation=45, ha="right")
-    ax_fastest.set_xlabel("Launch date")
+    _apply_date_xaxis(ax_fastest, result.date_labels, num_dates)
     ax_fastest.set_ylabel("Fastest time of flight (days)", color="blue")
     ax_fastest.tick_params(axis="y", labelcolor="blue")
-    ax_fastest.set_title(
-        f"Fastest arrival per launch date (Δv ≤ {dv_budget} km/s)"
-    )
+    ax_fastest.set_title(fastest_title)
     ax_fastest.set_ylim(0, tof_max)
 
     lines1, labels1 = ax_fastest.get_legend_handles_labels()
@@ -316,21 +368,19 @@ def summarize(result, dv_budget=None):
     ]
 
     if dv_budget is not None:
-        feasible = grid <= dv_budget
-        tof_grid = np.broadcast_to(tof_days, grid.shape)
-        masked_tof = np.where(feasible, tof_grid, np.inf)
-        fastest_tof = np.nanmin(masked_tof, axis=1)
-        row_indices = np.nanargmin(masked_tof, axis=1)
-        has_data = np.isfinite(fastest_tof)
+        fastest_tof, fastest_dv = _fastest_within_budget(grid, tof_days, dv_budget)
+        has_data = ~np.isnan(fastest_tof)
 
         if np.any(has_data):
             best = np.nanargmin(fastest_tof)
-            lines.extend([
-                f"\nFastest at Δv ≤ {dv_budget} km/s:",
-                f"  TOF: {fastest_tof[best]:.0f} days",
-                f"  Launch: {date_labels[best].strftime('%Y-%m-%d')}",
-                f"  Δv used: {grid[best, row_indices[best]]:.2f} km/s",
-            ])
+            lines.extend(
+                [
+                    f"\nFastest at Δv ≤ {dv_budget} km/s:",
+                    f"  TOF: {fastest_tof[best]:.0f} days",
+                    f"  Launch: {date_labels[best].strftime('%Y-%m-%d')}",
+                    f"  Δv used: {fastest_dv[best]:.2f} km/s",
+                ]
+            )
         else:
             lines.append(f"\nNo feasible transfers at Δv ≤ {dv_budget} km/s")
 
@@ -407,19 +457,25 @@ def get_feasible_windows(result, dv_budget=None, max_windows=500):
     dvs = grid[rows, cols]
     order = np.argsort(dvs)
     windows = [
-        (date_labels[rows[k]], tof_days[cols[k]], dvs[k])
-        for k in order[:max_windows]
+        (date_labels[rows[k]], tof_days[cols[k]], dvs[k]) for k in order[:max_windows]
     ]
     return windows
 
 
 def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
+    # Deferred to avoid a circular import (see note near the top imports).
+    from .transfers.visualization.core import (
+        compute_orbit_rotation,
+        plot_orbit,
+        plot_transfer,
+    )
+
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.plot(0, 0, "yo", label="Sun", markersize=15)
 
-    dep_r_au = np.sqrt(traject.dep_r[0]**2 + traject.dep_r[1]**2) / AU_TO_M
+    dep_r_au = np.sqrt(traject.dep_r[0] ** 2 + traject.dep_r[1] ** 2) / AU_TO_M
     dep_lon = np.arctan2(traject.dep_r[1], traject.dep_r[0])
-    arr_r_au = np.sqrt(traject.arr_r[0]**2 + traject.arr_r[1]**2) / AU_TO_M
+    arr_r_au = np.sqrt(traject.arr_r[0] ** 2 + traject.arr_r[1] ** 2) / AU_TO_M
     arr_lon = np.arctan2(traject.arr_r[1], traject.arr_r[0])
 
     dep_sx = dep_r_au * np.cos(dep_lon)
@@ -427,14 +483,19 @@ def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
     arr_sx = arr_r_au * np.cos(arr_lon)
     arr_sy = arr_r_au * np.sin(arr_lon)
 
-    ax.plot(dep_sx, dep_sy, "bo", markersize=8,
-            label=dep_body_data.get("englishName", "Departure"))
-    ax.plot(arr_sx, arr_sy, "ro", markersize=8,
-            label=arr_body_data.get("englishName", "Arrival"))
-
-    from .transfers.visualization.core import (
-        compute_orbit_rotation,
-        plot_orbit,
+    ax.plot(
+        dep_sx,
+        dep_sy,
+        "bo",
+        markersize=8,
+        label=dep_body_data.get("englishName", "Departure"),
+    )
+    ax.plot(
+        arr_sx,
+        arr_sy,
+        "ro",
+        markersize=8,
+        label=arr_body_data.get("englishName", "Arrival"),
     )
 
     dep_rotation = compute_orbit_rotation(dep_body_data, dep_lon, dep_r_au)
@@ -443,9 +504,15 @@ def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
     plot_orbit(ax, dep_body_data, rotation=dep_rotation)
     plot_orbit(ax, arr_body_data, rotation=arr_rotation)
 
-    from .transfers.visualization.core import plot_transfer
-    plot_transfer(ax, traject.x, traject.y, traject.dep_burn, traject.arr_burn,
-                  "Lambert Transfer", "green")
+    plot_transfer(
+        ax,
+        traject.x,
+        traject.y,
+        traject.dep_burn,
+        traject.arr_burn,
+        "Lambert Transfer",
+        "green",
+    )
 
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True, alpha=0.3)
@@ -469,10 +536,15 @@ def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
     )
     props = dict(boxstyle="round,pad=0.5", facecolor="black", alpha=0.7)
     ax.text(
-        0.02, 0.02, stats_text,
-        transform=ax.transAxes, fontsize=11,
-        verticalalignment="bottom", fontfamily="monospace",
-        color="white", bbox=props,
+        0.02,
+        0.02,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=11,
+        verticalalignment="bottom",
+        fontfamily="monospace",
+        color="white",
+        bbox=props,
     )
 
     plt.tight_layout()

@@ -13,7 +13,7 @@ from ..constants import GM_SUN, AU_TO_M
 from ..lambert import lambert_solve
 from .base import compute_r2_actual, planet_velocity, hohmann_tof as _hohmann_tof
 
-from .hohmann import hohmann_trajectory, hohmann_delta_v
+from .hohmann import hohmann_delta_v
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,9 @@ def search_transfer_ecliptic(
         num_tofs=71,
     )
 
-    _, _, launch_date, tof_days = _find_best_transfer_from_porkchop(result, target_dv_km_s)
+    _, _, launch_date, tof_days = _find_best_transfer_from_porkchop(
+        result, target_dv_km_s
+    )
 
     if launch_date is None:
         return None, ht
@@ -98,25 +100,6 @@ def search_transfer_ecliptic(
 
     tof = tof_days * 86400.0
     return (traj.x, traj.y, traj.dep_burn, traj.arr_burn, np.pi, tof), ht
-
-
-def _hohmann_fallback(r1, r2, points, target_ecc=0.0, target_rot=0.0):
-    """Return Hohmann transfer as fallback trajectory."""
-    x, y = hohmann_trajectory(r1, r2, points)
-    ht = _hohmann_tof(r1, r2)
-    dnu = np.pi
-    orbit_angle = dnu - target_rot
-    r2_actual = r2 * (1 - target_ecc**2) / (1 + target_ecc * np.cos(orbit_angle))
-    return (
-        x,
-        y,
-        np.array([r1 / AU_TO_M, 0.0]),
-        np.array(
-            [r2_actual * np.cos(dnu) / AU_TO_M, r2_actual * np.sin(dnu) / AU_TO_M]
-        ),
-        dnu,
-        ht,
-    )
 
 
 def calc_dv_for_factor(
@@ -228,7 +211,7 @@ def search_transfer(
     r1_mag = r1_actual
 
     best = None
-    best_dv = float('inf')
+    best_dv = float("inf")
     min_tof = None
 
     def _evaluate(tof, dnu):
@@ -281,7 +264,9 @@ def search_transfer(
         logger.debug(
             "search_transfer exhausted: r1=%.3e, r2=%.3e, target_dv=%.3e — "
             "no Lambert solution with valid semi-major axis found within budget",
-            r1, r2, target_dv,
+            r1,
+            r2,
+            target_dv,
         )
 
     return best, ht

@@ -6,7 +6,7 @@ transfer calculations.
 
 import numpy as np
 
-from ..constants import GM_SUN, KM_TO_M, AU_TO_M, SEC_TO_DAY
+from ..constants import GM_SUN, KM_TO_M, SEC_TO_DAY
 
 
 def compute_eccentricity(aphelion, perihelion):

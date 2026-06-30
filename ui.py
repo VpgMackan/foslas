@@ -14,8 +14,9 @@ from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
 from foslas.utils import (
-    find_body, find_asteroid, resolve_bodies, resolve_body_data,
-    orbit_params, compute_eccentricity, ASTEROID_CATALOG,
+    resolve_body_data,
+    orbit_params,
+    ASTEROID_CATALOG,
 )
 
 STAT_BOX_STYLE = (
@@ -292,7 +293,7 @@ def _pick_window(result, criterion, dv_budget=None):
 
     feasible = np.isfinite(grid)
     if dv_budget is not None:
-        feasible &= (grid <= dv_budget)
+        feasible &= grid <= dv_budget
 
     if not np.any(feasible):
         return None, None
@@ -312,7 +313,6 @@ def _pick_window(result, criterion, dv_budget=None):
         best = np.unravel_index(np.argmin(masked_grid), grid.shape)
 
     return date_labels[best[0]], tof_days[best[1]]
-
 
 
 import gradio as gr

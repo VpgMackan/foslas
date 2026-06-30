@@ -20,7 +20,7 @@ from .porkchop import (
     LambertTrajectory,
 )
 from .transfers.base import OrbitalBody, transfer_time
-from .transfers.hohmann import hohmann_delta_v, hohmann_trajectory
+from .transfers.hohmann import hohmann_delta_v
 from .transfers.fast import find_factor_for_dv
 from .transfers import compute_transfer_trajectory
 from .transfers.visualization import (
