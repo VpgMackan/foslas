@@ -9,11 +9,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from foslas.bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG
 from foslas.constants import KM_TO_M
 from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
+from foslas.utils import find_body, find_asteroid, resolve_bodies
+
 
 STAT_BOX_STYLE = (
     "background:#1f2937;border:1px solid #374151;border-radius:8px;"
@@ -59,36 +60,6 @@ ALL_BODIES = BODIES + sorted(ASTEROID_NAMES)
 BODY_IDS = [name.lower().replace(" ", "_") for name in BODIES]
 
 
-def find_asteroid(body_id):
-    body_id_lower = body_id.strip().lower()
-    for aid, data in ASTEROID_CATALOG.items():
-        if body_id_lower == aid:
-            return load_asteroid_body(aid)
-        if body_id_lower == data.get("englishName", "").lower():
-            return load_asteroid_body(aid)
-    return None
-
-
-def find_body(bodies, name):
-    name_lower = name.strip().lower()
-    return next(
-        (
-            b
-            for b in bodies
-            if name_lower in {b["id"].lower(), b["englishName"].lower()}
-        ),
-        None,
-    )
-
-
-def _resolve_body_data(body_id):
-    bodies = load_planet_bodies()
-    bd = find_asteroid(body_id)
-    if bd is None:
-        bd = find_body(bodies, body_id)
-    return bd
-
-
 def _orbit_params(body, day_offset=0):
     from foslas.transfers.visualization import get_body_ecliptic, compute_orbit_rotation
 
@@ -101,6 +72,9 @@ def _orbit_params(body, day_offset=0):
 
 
 def compute_transfer(start_name, end_name, dv_km_s, day_offset):
+    from foslas.bodies import load_planet_bodies
+    from foslas.transfers.visualization import visualize
+
     bodies = load_planet_bodies(day_offset)
     start = find_asteroid(start_name)
     if start is None:
@@ -135,8 +109,6 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
         arr_rot=arr_rot,
     )
     fast_tof = transfer_time(start_ob.sma, end_ob.sma, fast_factor)
-
-    from foslas.transfers.visualization import visualize
 
     stats = {
         "hohmann_dv": total_hohmann / 1000,
@@ -353,6 +325,16 @@ def _pick_window(result, criterion, dv_budget=None):
     if not found:
         return None, None
     return date_labels[best_i], tof_days[best_j]
+
+
+def _resolve_body_data(body_id):
+    from foslas.bodies import load_planet_bodies
+
+    bodies = load_planet_bodies()
+    bd = find_asteroid(body_id)
+    if bd is None:
+        bd = find_body(bodies, body_id)
+    return bd
 
 
 import gradio as gr

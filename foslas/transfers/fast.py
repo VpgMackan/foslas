@@ -12,6 +12,7 @@ from scipy.optimize import brentq
 from ..constants import GM_SUN, AU_TO_M
 from ..lambert import lambert_solve
 from ..integrator import integrate_trajectory
+from ..math_utils import solve_kepler, true_anomaly_from_eccentric_anomaly, orbital_velocity_components
 from .base import compute_r2_actual, planet_velocity
 
 from .hohmann import hohmann_trajectory, hohmann_delta_v
@@ -141,19 +142,12 @@ def _get_planet_state(body_name, time_offset_days):
         w = np.radians(ast["w_deg"])
         mean_motion = np.sqrt(GM_SUN / a**3) * 86400.0
         M = np.radians(ast["M0_deg"]) + mean_motion * dt_days
-        E = M
-        for _ in range(50):
-            f = E - e * np.sin(E) - M
-            fp = 1 - e * np.cos(E)
-            delta = -f / fp
-            E += delta
-            if abs(delta) < 1e-12:
-                break
+        E = solve_kepler(M, e)
         r = a * (1 - e * np.cos(E))
-        nu = 2.0 * np.arctan2(np.sqrt(1 + e) * np.sin(E / 2.0), np.sqrt(1 - e) * np.cos(E / 2.0))
-        h = np.sqrt(GM_SUN * a * (1 - e**2))
-        v_r = (GM_SUN / h) * e * np.sin(nu)
-        v_theta = (GM_SUN / h) * (1 + e * np.cos(nu))
+        nu = true_anomaly_from_eccentric_anomaly(E, e)
+        v_r, v_theta = orbital_velocity_components(a, e, nu)
+        lon = np.arctan2(np.sin(nu) * np.cos(w) * np.cos(omega) - np.cos(nu) * np.sin(w) * np.cos(inc), 
+                         np.cos(nu) * np.cos(w) * np.sin(omega) + np.sin(nu) * np.sin(w) * np.cos(inc))
         cos_lon = np.cos(lon)
         sin_lon = np.sin(lon)
         vx = v_r * cos_lon - v_theta * sin_lon

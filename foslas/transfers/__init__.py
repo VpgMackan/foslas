@@ -9,8 +9,23 @@ import numpy as np
 from ..constants import GM_SUN, AU_TO_M
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual
+from .base import OrbitalBody, transfer_time
 from .hohmann import hohmann_delta_v, hohmann_trajectory
-from .fast import search_transfer, _hohmann_fallback
+from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, compute_fast_trajectory, search_transfer_ecliptic
+
+
+__all__ = [
+    "compute_transfer_trajectory",
+    "hohmann_delta_v",
+    "transfer_time",
+    "find_factor_for_dv",
+    "OrbitalBody",
+    "hohmann_trajectory",
+    "calc_dv_for_factor",
+    "search_transfer",
+    "compute_fast_trajectory",
+    "search_transfer_ecliptic",
+]
 
 
 def compute_transfer_trajectory(
@@ -74,6 +89,7 @@ def compute_transfer_trajectory(
     )
 
     if best is None:
+        from .fast import _hohmann_fallback
         return _hohmann_fallback(r1, r2, points, target_ecc, target_rot)
 
     tof, dnu, v1, r1_vec, r2_actual = best
@@ -89,21 +105,3 @@ def compute_transfer_trajectory(
     )
 
     return x, y, dep_burn, arr_burn, dnu, tof
-
-
-__all__ = [
-    "compute_transfer_trajectory",
-    "hohmann_delta_v",
-    "transfer_time",
-    "find_factor_for_dv",
-    "OrbitalBody",
-    "hohmann_trajectory",
-    "calc_dv_for_factor",
-    "search_transfer",
-    "compute_fast_trajectory",
-    "search_transfer_ecliptic",
-]
-
-from .base import OrbitalBody, transfer_time
-from .hohmann import hohmann_delta_v, hohmann_trajectory
-from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, compute_fast_trajectory, search_transfer_ecliptic

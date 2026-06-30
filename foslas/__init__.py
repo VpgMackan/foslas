@@ -28,6 +28,7 @@ from .transfers.visualization import (
     plot_orbit,
     plot_transfer,
 )
+from .utils import find_body, find_asteroid, resolve_bodies
 
 __all__ = [
     "load_planet_bodies", "load_asteroid_body",
@@ -40,4 +41,5 @@ __all__ = [
     "OrbitalBody", "hohmann_delta_v", "transfer_time", "find_factor_for_dv",
     "compute_transfer_trajectory", "compute_fast_trajectory",
     "plot_orbit", "plot_transfer", "visualize",
+    "find_body", "find_asteroid", "resolve_bodies",
 ]

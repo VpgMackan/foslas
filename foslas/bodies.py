@@ -1,6 +1,9 @@
 import sys
+
 import numpy as np
+
 from .constants import GM_SUN, AU_TO_M
+from .math_utils import solve_kepler, true_anomaly_from_eccentric_anomaly
 
 ASTEROID_CATALOG = {
     "16_psyche": {
@@ -126,19 +129,10 @@ def keplerian_to_state(a_au, ecc, inc_deg, omega_deg, w_deg, M0_deg, epoch_jd, t
     mean_motion = np.sqrt(GM_SUN / a**3) * 86400.0
     M = np.radians(M0_deg) + mean_motion * dt_days
 
-    E = M
-    for _ in range(50):
-        f = E - ecc * np.sin(E) - M
-        fp = 1 - ecc * np.cos(E)
-        delta = -f / fp
-        E += delta
-        if abs(delta) < 1e-12:
-            break
+    E = solve_kepler(M, ecc)
 
     r = a * (1 - ecc * np.cos(E))
-    nu = 2 * np.arctan2(
-        np.sqrt(1 + ecc) * np.sin(E / 2), np.sqrt(1 - ecc) * np.cos(E / 2)
-    )
+    nu = true_anomaly_from_eccentric_anomaly(E, ecc)
 
     x_orb = r * np.cos(nu)
     y_orb = r * np.sin(nu)
