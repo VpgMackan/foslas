@@ -196,12 +196,14 @@ def run_transfer(start, end, dv, day):
 
 
 def run_porkchop_generate(
-    start, end, start_date, dv_budget, tof_min, tof_max, date_step
+    start, end, start_date, dv_budget, tof_min, tof_max, date_step, criterion
 ):
     from foslas.porkchop import (
         compute_porkchop,
         plot_porkchop,
         plot_porkchop_budget,
+        compute_lambert_trajectory,
+        plot_lambert_trajectory,
     )
 
     try:
@@ -227,7 +229,7 @@ def run_porkchop_generate(
             _stat_box("Launch Date", date_labels[min_idx[0]].strftime("%Y-%m-%d")),
             _stat_box("TOF", f"{tof_days[min_idx[1]]:.0f} days"),
         )
-        html = (
+        porkchop_html = (
             f'<p style="font-weight:600;color:#e5e7eb;margin:0 0 8px 0;">'
             f"Porkchop: {result.dep_body.title()} → {result.arr_body.title()}</p>"
             f'<p style="font-size:0.85em;color:#9ca3af;margin:0 0 8px 0;">Minimum Δv Solution</p>'
@@ -254,13 +256,13 @@ def run_porkchop_generate(
                     _stat_box("Launch Date", date_labels[best].strftime("%Y-%m-%d")),
                     _stat_box("Δv Used", f"{fastest_dv[best]:.2f} km/s"),
                 )
-                html += (
+                porkchop_html += (
                     f'<p style="font-size:0.85em;color:#9ca3af;margin:12px 0 8px 0;">'
                     f"Fastest at Δv ≤ {dv:.0f} km/s</p>"
                     f"{fast_row}"
                 )
             else:
-                html += (
+                porkchop_html += (
                     f'<p style="color:#f59e0b;margin:12px 0 0 0;">'
                     f"No feasible transfers at Δv ≤ {dv:.0f} km/s</p>"
                 )
@@ -270,14 +272,51 @@ def run_porkchop_generate(
         else:
             fig = plot_porkchop(result)
 
-        plot_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
-        fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+        porkchop_plot_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+        fig.savefig(porkchop_plot_path, dpi=150, bbox_inches="tight")
         plt.close("all")
 
-        return html, plot_path, result
+        launch_date, tof_days_selected = _pick_window(result, criterion, dv_budget=dv)
+        if launch_date is None:
+            transfer_stats = '<p style="color:#f59e0b;">No feasible transfer found for this criterion.</p>'
+            transfer_plot = None
+        else:
+            traj = compute_lambert_trajectory(start, end, launch_date, tof_days_selected)
+
+            dep_data = _resolve_body_data(start)
+            arr_data = _resolve_body_data(end)
+
+            if dep_data is None or arr_data is None:
+                transfer_stats = '<p style="color:#ef4444;">Could not resolve body data for plotting.</p>'
+                transfer_plot = None
+            else:
+                fig = plot_lambert_trajectory(traj, dep_data, arr_data)
+
+                transfer_plot = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+                fig.savefig(transfer_plot, dpi=150, bbox_inches="tight")
+                plt.close("all")
+
+                date_row = _stats_grid(
+                    _stat_box("Launch Date", traj.launch_date.strftime("%Y-%m-%d")),
+                    _stat_box("Arrival Date", traj.arrival_date.strftime("%Y-%m-%d")),
+                    _stat_box("Transfer Time", f"{traj.tof_days:.0f} days"),
+                )
+                dv_row = _stats_grid(
+                    _stat_box("Δv Departure", f"{traj.dv_dep:.2f} km/s"),
+                    _stat_box("Δv Arrival", f"{traj.dv_arr:.2f} km/s"),
+                    _stat_box("Δv Total", f"{traj.dv_total:.2f} km/s"),
+                )
+                transfer_stats = (
+                    f'<p style="font-weight:600;color:#e5e7eb;margin:0 0 8px 0;">'
+                    f"Pincer Transfer: {start.title()} → {end.title()}</p>"
+                    f"{date_row}"
+                    f"{dv_row}"
+                )
+
+        return porkchop_html, porkchop_plot_path, transfer_stats, transfer_plot
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
-        return f'<p style="color:#ef4444;">Error occurred: {e}</p>', None, None
+        return f'<p style="color:#ef4444;">Error occurred: {e}</p>', None, f'<p style="color:#ef4444;">Error occurred: {e}</p>', None
 
 
 def _pick_window(result, criterion, dv_budget=None):
@@ -314,77 +353,6 @@ def _pick_window(result, criterion, dv_budget=None):
     if not found:
         return None, None
     return date_labels[best_i], tof_days[best_j]
-
-
-def run_porkchop_transfer(start, end, criterion, porkchop_state, start_date, dv_budget):
-    from foslas.porkchop import (
-        compute_lambert_trajectory,
-        plot_lambert_trajectory,
-    )
-
-    if porkchop_state is not None:
-        try:
-            dv = float(dv_budget) if dv_budget else None
-            launch_date, tof_days = _pick_window(porkchop_state, criterion, dv_budget=dv)
-            if launch_date is None:
-                return (
-                    '<p style="color:#f59e0b;">No feasible transfer found for this criterion.</p>',
-                    None,
-                )
-
-            traj = compute_lambert_trajectory(start, end, launch_date, tof_days)
-
-            dep_data = _resolve_body_data(start)
-            arr_data = _resolve_body_data(end)
-
-            if dep_data is None or arr_data is None:
-                return (
-                    '<p style="color:#ef4444;">Could not resolve body data for plotting.</p>',
-                    None,
-                )
-
-            fig = plot_lambert_trajectory(traj, dep_data, arr_data)
-
-            plot_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
-            fig.savefig(plot_path, dpi=150, bbox_inches="tight")
-            plt.close("all")
-
-            date_row = _stats_grid(
-                _stat_box("Launch Date", traj.launch_date.strftime("%Y-%m-%d")),
-                _stat_box("Arrival Date", traj.arrival_date.strftime("%Y-%m-%d")),
-                _stat_box("Transfer Time", f"{traj.tof_days:.0f} days"),
-            )
-            dv_row = _stats_grid(
-                _stat_box("Δv Departure", f"{traj.dv_dep:.2f} km/s"),
-                _stat_box("Δv Arrival", f"{traj.dv_arr:.2f} km/s"),
-                _stat_box("Δv Total", f"{traj.dv_total:.2f} km/s"),
-            )
-            stats_text = (
-                f'<p style="font-weight:600;color:#e5e7eb;margin:0 0 8px 0;">'
-                f"Pincer Transfer: {start.title()} → {end.title()}</p>"
-                f"{date_row}"
-                f"{dv_row}"
-            )
-
-            return stats_text, plot_path
-        except Exception as e:
-            print(f"CRITICAL ERROR: {e}")
-            return f'<p style="color:#ef4444;">Error occurred: {e}</p>', None
-
-    try:
-        dv = float(dv_budget) if dv_budget else 10.0
-        day = 0
-        if start_date:
-            try:
-                sd = datetime.strptime(start_date, "%Y-%m-%d")
-                day = (sd - datetime.now()).days
-            except ValueError:
-                pass
-        stats_text, plot_path = compute_transfer(start, end, dv, day)
-        return stats_text, plot_path
-    except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
-        return f'<p style="color:#ef4444;">Error occurred: {e}</p>', None
 
 
 import gradio as gr
@@ -431,7 +399,12 @@ with gr.Blocks(title="foslas - Orbital Transfer Calculator") as demo:
                 step=1,
                 label="Launch date step (days)",
             )
-            generate_btn = gr.Button("Generate Porkchop", variant="primary")
+            criterion_radio = gr.Radio(
+                choices=["Nearest launch date", "Shortest transfer time", "Lowest Δv"],
+                value="Lowest Δv",
+                label="Optimize Transfer For",
+            )
+            generate_btn = gr.Button("Generate Porkchop & Plot Transfer", variant="primary")
 
         with gr.Column(scale=1):
             porkchop_stats = gr.HTML(label="Porkchop Summary")
@@ -441,18 +414,8 @@ with gr.Blocks(title="foslas - Orbital Transfer Calculator") as demo:
 
     with gr.Row():
         with gr.Column(scale=1):
-            criterion_radio = gr.Radio(
-                choices=["Nearest launch date", "Shortest transfer time", "Lowest Δv"],
-                value="Lowest Δv",
-                label="Optimize Transfer For",
-            )
-            plot_transfer_btn = gr.Button("Plot Transfer", variant="primary")
-
-        with gr.Column(scale=1):
             transfer_stats = gr.HTML(label="Transfer Statistics")
             transfer_plot = gr.Image(label="Transfer Trajectory", type="filepath")
-
-    porkchop_state = gr.State(value=None)
 
     generate_btn.click(
         fn=run_porkchop_generate,
@@ -464,21 +427,9 @@ with gr.Blocks(title="foslas - Orbital Transfer Calculator") as demo:
             tof_min_input,
             tof_max_input,
             date_step_input,
-        ],
-        outputs=[porkchop_stats, porkchop_plot, porkchop_state],
-    )
-
-    plot_transfer_btn.click(
-        fn=run_porkchop_transfer,
-        inputs=[
-            start_input,
-            end_input,
             criterion_radio,
-            porkchop_state,
-            start_date_input,
-            dv_budget_input,
         ],
-        outputs=[transfer_stats, transfer_plot],
+        outputs=[porkchop_stats, porkchop_plot, transfer_stats, transfer_plot],
     )
 
 if __name__ == "__main__":
