@@ -124,8 +124,8 @@ def orbit_params(body, day_offset=0):
 
     Parameters
     ----------
-    body : Body
-        Body object with aphelion_km, perihelion_km, english_name.
+    body : Body or dict
+        Body object or dict with eccentricity and english_name.
     day_offset : int, optional
         Days offset from current time (default: 0).
 
@@ -136,8 +136,14 @@ def orbit_params(body, day_offset=0):
     """
     from .transfers.visualization import get_body_ecliptic, compute_orbit_rotation
 
-    ecc = body.eccentricity
-    r_au, lon = get_body_ecliptic(body.english_name, time_offset_days=day_offset)
+    if hasattr(body, 'eccentricity'):
+        ecc = body.eccentricity
+        name = body.english_name
+    else:
+        a = (body['aphelion'] + body['perihelion']) / 2
+        ecc = (body['aphelion'] - body['perihelion']) / (body['aphelion'] + body['perihelion'])
+        name = body['englishName']
+    r_au, lon = get_body_ecliptic(name, time_offset_days=day_offset)
     rotation = compute_orbit_rotation(body, lon, r_au)
     return ecc, rotation - lon
 

@@ -53,8 +53,12 @@ def get_body_ecliptic(body_name, time_offset_days=0, ephemeris=None):
 
 
 def compute_orbit_rotation(body, planet_lon, planet_r_au):
-    a = (body.aphelion_km + body.perihelion_km) / 2
-    e = body.eccentricity
+    if hasattr(body, 'aphelion_km'):
+        a = (body.aphelion_km + body.perihelion_km) / 2
+        e = body.eccentricity
+    else:
+        a = (body['aphelion'] + body['perihelion']) / 2
+        e = (body['aphelion'] - body['perihelion']) / (body['aphelion'] + body['perihelion'])
     if e < 1e-10:
         return planet_lon
     planet_r_km = planet_r_au * AU_TO_KM
@@ -70,20 +74,29 @@ def plot_orbit(ax, body, rotation=0):
     ----------
     ax : matplotlib.axes.Axes
         The axes to plot on.
-    body : Body
-        Body object with aphelion_km, perihelion_km, and english_name.
+    body : Body or dict
+        Body object with aphelion_km, perihelion_km, and english_name,
+        or a dict with 'aphelion', 'perihelion', and 'englishName'.
     rotation : float, optional
         Rotation angle in radians (default: 0).
     """
-    a = (body.aphelion_km + body.perihelion_km) / 2
-    e = body.eccentricity
+    if hasattr(body, 'aphelion_km'):
+        a = (body.aphelion_km + body.perihelion_km) / 2
+        e = body.eccentricity
+        name = body.english_name
+    else:
+        a = (body["aphelion"] + body["perihelion"]) / 2
+        e = (body["aphelion"] - body["perihelion"]) / (
+            body["aphelion"] + body["perihelion"]
+        )
+        name = body["englishName"]
     theta = np.linspace(0, 2 * np.pi, 1000)
     r = (a * (1 - e**2)) / (1 + e * np.cos(theta))
     ax.plot(
         r * np.cos(theta + rotation) / AU_TO_KM,
         r * np.sin(theta + rotation) / AU_TO_KM,
         linewidth=1.5,
-        label=f"Orbit for {body.english_name}",
+        label=f"Orbit for {name}",
     )
 
     arrow_theta = np.pi / 3

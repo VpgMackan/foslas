@@ -502,19 +502,21 @@ def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
     arr_sx = arr_r_au * np.cos(arr_lon)
     arr_sy = arr_r_au * np.sin(arr_lon)
 
+    name = dep_body_data.english_name if hasattr(dep_body_data, 'english_name') else dep_body_data.get("englishName", "Departure")
     ax.plot(
         dep_sx,
         dep_sy,
         "bo",
         markersize=8,
-        label=dep_body_data.get("englishName", "Departure"),
+        label=name,
     )
+    name = arr_body_data.english_name if hasattr(arr_body_data, 'english_name') else arr_body_data.get("englishName", "Arrival")
     ax.plot(
         arr_sx,
         arr_sy,
         "ro",
         markersize=8,
-        label=arr_body_data.get("englishName", "Arrival"),
+        label=name,
     )
 
     dep_rotation = compute_orbit_rotation(dep_body_data, dep_lon, dep_r_au)
@@ -538,9 +540,11 @@ def plot_lambert_trajectory(traject, dep_body_data, arr_body_data):
     ax.legend(loc="upper right", fontsize=9)
     ax.set_xlabel("Distance (AU)", fontsize=11)
     ax.set_ylabel("Distance (AU)", fontsize=11)
+    dep_name = dep_body_data.english_name if hasattr(dep_body_data, 'english_name') else dep_body_data.get("englishName", "?")
+    arr_name = arr_body_data.english_name if hasattr(arr_body_data, 'english_name') else arr_body_data.get("englishName", "?")
     ax.set_title(
-        f"Lambert Transfer: {dep_body_data.get('englishName', '?')} → "
-        f"{arr_body_data.get('englishName', '?')}\n"
+        f"Lambert Transfer: {dep_name} → "
+        f"{arr_name}\n"
         f"Launch: {traject.launch_date.strftime('%Y-%m-%d')}  "
         f"TOF: {traject.tof_days:.0f} days",
         fontsize=13,
