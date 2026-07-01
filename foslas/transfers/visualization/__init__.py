@@ -12,7 +12,6 @@ import numpy as np
 
 from ..hohmann import hohmann_delta_v
 from .. import compute_transfer_trajectory
-from ..base import compute_eccentricity
 from .core import (
     get_body_ecliptic,
     compute_orbit_rotation,
@@ -43,8 +42,8 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
         Radius of arrival orbit in meters.
     target_dv : float
         Available delta-V budget in m/s.
-    bodies_data : list of dict
-        Body data for departure and arrival bodies.
+    bodies_data : list of Body
+        Body objects for departure and arrival bodies.
     stats : dict, optional
         Statistics to display in the plot (hohmann_dv, hohmann_time, etc.).
     """
@@ -56,30 +55,20 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.plot(0, 0, "yo", label="Sun", markersize=15)
 
-    e_end = (
-        compute_eccentricity(
-            bodies_data[1].get("aphelion", 0),
-            bodies_data[1].get("perihelion", 0),
-        )
-        if len(bodies_data) > 1
-        else 0.0
-    )
+    e_end = bodies_data[1].eccentricity if len(bodies_data) > 1 else 0.0
 
-    dep_ecc = compute_eccentricity(
-        bodies_data[0].get("aphelion", 0),
-        bodies_data[0].get("perihelion", 0),
-    )
+    dep_ecc = bodies_data[0].eccentricity
 
-    dep_r, dep_lon = get_body_ecliptic(bodies_data[0]["englishName"])
-    arr_r, arr_lon = get_body_ecliptic(bodies_data[1]["englishName"])
+    dep_r, dep_lon = get_body_ecliptic(bodies_data[0].english_name)
+    arr_r, arr_lon = get_body_ecliptic(bodies_data[1].english_name)
 
     sx = dep_r * np.cos(dep_lon)
     sy = dep_r * np.sin(dep_lon)
     ex = arr_r * np.cos(arr_lon)
     ey = arr_r * np.sin(arr_lon)
 
-    ax.plot(sx, sy, "bo", markersize=8, label=bodies_data[0].get("englishName"))
-    ax.plot(ex, ey, "ro", markersize=8, label=bodies_data[1].get("englishName"))
+    ax.plot(sx, sy, "bo", markersize=8, label=bodies_data[0].english_name)
+    ax.plot(ex, ey, "ro", markersize=8, label=bodies_data[1].english_name)
 
     dep_rotation = compute_orbit_rotation(bodies_data[0], dep_lon, dep_r)
     arr_rotation = compute_orbit_rotation(bodies_data[1], arr_lon, arr_r)
@@ -87,11 +76,11 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     plot_orbit(ax, bodies_data[0], rotation=dep_rotation)
     plot_orbit(ax, bodies_data[1], rotation=arr_rotation)
 
-    dep_sma_m = bodies_data[0].get("semimajorAxis", 0) * 1000.0
-    arr_sma_m = bodies_data[1].get("semimajorAxis", 0) * 1000.0
+    dep_sma_m = bodies_data[0].semimajor_axis_km * 1000.0
+    arr_sma_m = bodies_data[1].semimajor_axis_km * 1000.0
 
-    _, _, hohmann_dv = hohmann_delta_v(dep_sma_m, arr_sma_m)
-    x_h, y_h, dep_h, arr_h, nu_h, hohmann_tof_s = compute_transfer_trajectory(
+    _, hohmann_dv = hohmann_delta_v(dep_sma_m, arr_sma_m)
+    h_traj, hohmann_tof_s = compute_transfer_trajectory(
         dep_sma_m,
         arr_sma_m,
         hohmann_dv,
@@ -101,14 +90,14 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
         dep_rot=dep_rotation - dep_lon,
     )
 
-    x_h, y_h = _rotate(x_h, y_h, dep_lon)
-    dep_h = np.array(_rotate(dep_h[0], dep_h[1], dep_lon))
-    arr_h = np.array(_rotate(arr_h[0], arr_h[1], dep_lon))
+    x_h, y_h = _rotate(h_traj.x, h_traj.y, dep_lon)
+    dep_h = np.array(_rotate(h_traj.dep_burn[0], h_traj.dep_burn[1], dep_lon))
+    arr_h = np.array(_rotate(h_traj.arr_burn[0], h_traj.arr_burn[1], dep_lon))
 
     fast_tof_s = None
     if target_dv > hohmann_dv + 1.0:
         try:
-            x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = compute_transfer_trajectory(
+            f_traj, fast_tof_s = compute_transfer_trajectory(
                 dep_sma_m,
                 arr_sma_m,
                 target_dv,
@@ -123,7 +112,7 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
 
         if fast_tof_s is not None:
             try:
-                plot_transfer(ax, x_f, y_f, dep_f, arr_f, "Fast Transfer", "red")
+                plot_transfer(ax, f_traj.x, f_traj.y, f_traj.dep_burn, f_traj.arr_burn, "Fast Transfer", "red")
             except (ValueError, ZeroDivisionError):
                 fast_tof_s = None
 
@@ -152,7 +141,7 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
             future_time = hohmann_tof_s / 86400.0
 
         future_r, future_lon = get_body_ecliptic(
-            bodies_data[1]["englishName"], time_offset_days=future_time
+            bodies_data[1].english_name, time_offset_days=future_time
         )
         planet_x = future_r * np.cos(future_lon)
         planet_y = future_r * np.sin(future_lon)
@@ -164,7 +153,7 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
             linestyle="None",
             color="green",
             markersize=8,
-            label=f"{bodies_data[1].get('englishName')} future",
+            label=f"{bodies_data[1].english_name} future",
         )
 
         stats_text = (

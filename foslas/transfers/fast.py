@@ -5,17 +5,28 @@ than the minimum-energy Hohmann transfer.
 """
 
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 
 import numpy as np
 from scipy.optimize import brentq
 
-from ..constants import GM_SUN, AU_TO_M
+from ..constants import GM_SUN, AU_TO_M, KM_TO_M
 from ..lambert import lambert_solve
-from .base import compute_r2_actual, planet_velocity, hohmann_tof as _hohmann_tof
-
+from ..porkchop import TransferTrajectory
+from .base import hohmann_tof as _hohmann_tof, OrbitGeometry
 from .hohmann import hohmann_delta_v, hohmann_trajectory
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TransferSearchResult:
+    best_i: Optional[int]
+    best_j: Optional[int]
+    launch_date: Optional[datetime]
+    tof_days: Optional[float]
 
 
 def _find_best_transfer_from_porkchop(porkchop_result, target_dv_km_s):
@@ -25,8 +36,8 @@ def _find_best_transfer_from_porkchop(porkchop_result, target_dv_km_s):
 
     Returns
     -------
-    tuple
-        (best_i, best_j, launch_date, tof_days) or (None, None, None, None) if not found
+    TransferSearchResult
+        Contains best_i, best_j, launch_date, tof_days or None values if not found
     """
     grid = porkchop_result.grid
     tof_days = porkchop_result.tof_days
@@ -34,12 +45,12 @@ def _find_best_transfer_from_porkchop(porkchop_result, target_dv_km_s):
 
     feasible = np.isfinite(grid) & (grid <= target_dv_km_s)
     if not np.any(feasible):
-        return None, None, None, None
+        return TransferSearchResult(None, None, None, None)
 
     tof_grid = np.broadcast_to(tof_days, grid.shape)
     masked_tof = np.where(feasible, tof_grid, np.inf)
     min_idx = np.unravel_index(np.argmin(masked_tof), grid.shape)
-    return min_idx[0], min_idx[1], date_labels[min_idx[0]], tof_days[min_idx[1]]
+    return TransferSearchResult(min_idx[0], min_idx[1], date_labels[min_idx[0]], tof_days[min_idx[1]])
 
 
 def search_transfer_ecliptic(
@@ -63,10 +74,11 @@ def search_transfer_ecliptic(
 
     Returns
     -------
-    tuple
-        (x, y, dep_burn, arr_burn, dnu, tof) or None if no solution found.
+    TransferTrajectory or None
+        The computed transfer trajectory or None if no solution found.
+    float
+        Hohmann transfer time in seconds.
     """
-    from datetime import datetime
     from ..porkchop import compute_porkchop, compute_lambert_trajectory
     from .visualization.core import get_body_ecliptic
 
@@ -87,25 +99,30 @@ def search_transfer_ecliptic(
         num_tofs=71,
     )
 
-    _, _, launch_date, tof_days = _find_best_transfer_from_porkchop(
-        result, target_dv_km_s
-    )
+    search_result = _find_best_transfer_from_porkchop(result, target_dv_km_s)
 
-    if launch_date is None:
+    if search_result.launch_date is None:
         return None, ht
 
     traj = compute_lambert_trajectory(
-        dep_body_name, arr_body_name, launch_date, tof_days, points=points
+        dep_body_name, arr_body_name, search_result.launch_date, search_result.tof_days, points=points
     )
 
-    tof = tof_days * 86400.0
-    return (traj.x, traj.y, traj.dep_burn, traj.arr_burn, np.pi, tof), ht
+    tof = search_result.tof_days * 86400.0
+    return TransferTrajectory(traj.x, traj.y, traj.dep_burn, traj.arr_burn, np.pi, tof), ht
 
 
 def calc_dv_for_factor(
-    r1, r2, factor, dep_ecc=0.0, dep_rot=0.0, arr_ecc=0.0, arr_rot=0.0
+    r1, r2, factor, dep_geom: OrbitGeometry = None, arr_geom: OrbitGeometry = None
 ):
     """Compute total delta-V for a transfer orbit scaled by a factor."""
+    from .base import OrbitalBody
+
+    if dep_geom is None:
+        dep_geom = OrbitGeometry()
+    if arr_geom is None:
+        arr_geom = OrbitGeometry()
+
     a = ((r1 + r2) / 2) * factor
     vt1 = np.sqrt(GM_SUN * (2 / r1 - 1 / a))
     v_arr_mag = np.sqrt(GM_SUN * (2 / r2 - 1 / a))
@@ -113,7 +130,10 @@ def calc_dv_for_factor(
     v_radial_sq = v_arr_mag**2 - v_theta**2
     v_radial = np.sqrt(v_radial_sq) if v_radial_sq > 0 else 0.0
 
-    v_planet_dep = planet_velocity(r1, dep_ecc, -dep_rot, 0.0)
+    dep_body = OrbitalBody(r1 / KM_TO_M, r1 / KM_TO_M, eccentricity=dep_geom.eccentricity)
+    arr_body = OrbitalBody(r2 / KM_TO_M, r2 / KM_TO_M, eccentricity=arr_geom.eccentricity)
+
+    v_planet_dep = dep_body.velocity_at(-dep_geom.rotation, 0.0)
     v_transfer_dep = np.array([0.0, vt1, 0.0])
     dv_dep = np.linalg.norm(v_transfer_dep - v_planet_dep)
 
@@ -125,8 +145,8 @@ def calc_dv_for_factor(
             0.0,
         ]
     )
-    arr_nu = dnu - arr_rot
-    v_planet_arr = planet_velocity(r2, arr_ecc, arr_nu, dnu)
+    arr_nu = dnu - arr_geom.rotation
+    v_planet_arr = arr_body.velocity_at(arr_nu, dnu)
     dv_arr = np.linalg.norm(v_transfer_arr - v_planet_arr)
 
     return dv_dep + dv_arr
@@ -137,12 +157,15 @@ def find_factor_for_dv(
     r2,
     target_dv,
     max_factor=50.0,
-    dep_ecc=0.0,
-    dep_rot=0.0,
-    arr_ecc=0.0,
-    arr_rot=0.0,
+    dep_geom: OrbitGeometry = None,
+    arr_geom: OrbitGeometry = None,
 ):
     """Find the energy factor that uses a given delta-V budget."""
+    if dep_geom is None:
+        dep_geom = OrbitGeometry()
+    if arr_geom is None:
+        arr_geom = OrbitGeometry()
+
     _, _, dv_total = hohmann_delta_v(r1, r2)
     if target_dv < dv_total:
         return 1.0, dv_total
@@ -151,7 +174,7 @@ def find_factor_for_dv(
 
     def residual(factor):
         return (
-            calc_dv_for_factor(r1, r2, factor, dep_ecc, dep_rot, arr_ecc, arr_rot)
+            calc_dv_for_factor(r1, r2, factor, dep_geom, arr_geom)
             - target_dv
         )
 
@@ -164,13 +187,11 @@ def find_factor_for_dv(
     except ValueError:
         factor = 1.0 if inward else max_factor
 
-    return factor, calc_dv_for_factor(
-        r1, r2, factor, dep_ecc, dep_rot, arr_ecc, arr_rot
-    )
+    return factor, calc_dv_for_factor(r1, r2, factor, dep_geom, arr_geom)
 
 
 def search_transfer(
-    r1, r2, target_dv, points, target_ecc, target_rot, dep_ecc, dep_rot
+    r1, r2, target_dv, points, dep_geom: OrbitGeometry, arr_geom: OrbitGeometry
 ):
     """Search for the fastest transfer within a delta-V budget.
 
@@ -187,14 +208,10 @@ def search_transfer(
         Available delta-V budget in m/s.
     points : int
         Number of trajectory points.
-    target_ecc : float
-        Eccentricity of the target orbit.
-    target_rot : float
-        Rotation angle of the target orbit in radians.
-    dep_ecc : float
-        Eccentricity of the departure orbit.
-    dep_rot : float
-        Rotation angle of the departure orbit in radians.
+    dep_geom : OrbitGeometry
+        Departure orbit geometry (eccentricity, rotation).
+    arr_geom : OrbitGeometry
+        Arrival orbit geometry (eccentricity, rotation).
 
     Returns
     -------
@@ -202,12 +219,17 @@ def search_transfer(
         (best, hohmann_tof_s) where best is (tof, dnu, v1, r1_vec, r2_actual)
         or None if no solution found.
     """
+    from .base import OrbitalBody
+
     ht = _hohmann_tof(r1, r2)
 
-    dep_nu = -dep_rot
-    r1_actual = compute_r2_actual(r1, dep_ecc, dep_nu)
+    dep_body = OrbitalBody(r1 / KM_TO_M, r1 / KM_TO_M, eccentricity=dep_geom.eccentricity)
+    arr_body = OrbitalBody(r2 / KM_TO_M, r2 / KM_TO_M, eccentricity=arr_geom.eccentricity)
+
+    dep_nu = -dep_geom.rotation
+    r1_actual = dep_body.radius_at(dep_nu)
     r1_vec = np.array([r1_actual, 0.0, 0.0])
-    v_planet_dep = planet_velocity(r1, dep_ecc, dep_nu, 0.0)
+    v_planet_dep = dep_body.velocity_at(dep_nu, 0.0)
     r1_mag = r1_actual
 
     best = None
@@ -216,9 +238,9 @@ def search_transfer(
 
     def _evaluate(tof, dnu):
         nonlocal best, best_dv, min_tof
-        orbit_angle = dnu - target_rot
-        r2_actual = compute_r2_actual(r2, target_ecc, orbit_angle)
-        v_planet_arr = planet_velocity(r2, target_ecc, orbit_angle, dnu)
+        orbit_angle = dnu - arr_geom.rotation
+        r2_actual = arr_body.radius_at(orbit_angle)
+        v_planet_arr = arr_body.velocity_at(orbit_angle, dnu)
         r2_vec = np.array([r2_actual * np.cos(dnu), r2_actual * np.sin(dnu), 0.0])
         try:
             v1, v2 = lambert_solve(r1_vec, r2_vec, tof)
@@ -275,15 +297,15 @@ def search_transfer(
 def _hohmann_fallback(r1, r2, points, target_ecc, target_rot):
     """Fallback to Hohmann trajectory when search_transfer fails.
 
-    Returns the same 6-tuple shape as compute_transfer_trajectory.
+    Returns the same shape as compute_transfer_trajectory.
     """
     x, y = hohmann_trajectory(r1, r2, points)
     ht = _hohmann_tof(r1, r2)
-    return (
-        x,
-        y,
-        np.array([r1 / AU_TO_M, 0.0]),
-        np.array([-r2 / AU_TO_M, 0.0]),
-        np.pi,
-        ht,
+    return TransferTrajectory(
+        x=x,
+        y=y,
+        dep_burn=np.array([r1 / AU_TO_M, 0.0]),
+        arr_burn=np.array([-r2 / AU_TO_M, 0.0]),
+        dnu=np.pi,
+        tof=ht,
     )

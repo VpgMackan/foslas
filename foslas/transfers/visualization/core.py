@@ -11,11 +11,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 import numpy as np
-import pykep as pk
 from datetime import datetime, timedelta
 
 from ...constants import AU_TO_KM, AU_TO_M, GM_SUN, JD_EPOCH_OFFSET
-from ..base import compute_eccentricity
+from ...ephemeris import get_default_ephemeris
 
 
 def _datetime_to_jd(dt):
@@ -23,32 +22,39 @@ def _datetime_to_jd(dt):
     return dt.timestamp() / 86400.0 + JD_EPOCH_OFFSET
 
 
-def get_body_ecliptic(body_name, time_offset_days=0):
-    from ...bodies import compute_asteroid_ephemeris, ASTEROID_CATALOG
+def get_body_ecliptic(body_name, time_offset_days=0, ephemeris=None):
+    """Get body position in ecliptic coordinates.
 
-    body_name_lower = body_name.lower().replace(" ", "_")
-    if body_name_lower in ASTEROID_CATALOG:
-        jd = _datetime_to_jd(datetime.now() + timedelta(days=time_offset_days))
-        return compute_asteroid_ephemeris(body_name_lower, jd)
+    Parameters
+    ----------
+    body_name : str
+        Name of the celestial body.
+    time_offset_days : float
+        Days from now to compute position.
+    ephemeris : EphemerisProvider, optional
+        Ephemeris provider to use. Defaults to pykep-based provider.
+
+    Returns
+    -------
+    tuple
+        (distance_au, longitude_rad)
+    """
+    if ephemeris is None:
+        ephemeris = get_default_ephemeris()
 
     now = datetime.now() + timedelta(days=time_offset_days)
-    jd = now.timestamp() / 86400.0 + 2440587.5
-    days_since_j2000 = jd - 2451545.0
-    epoch = pk.epoch(days_since_j2000)
+    pv = ephemeris.position_velocity(body_name, now)
 
-    planet = pk.planet(pk.udpla.jpl_lp(body_name))
-    r, _ = planet.eph(epoch)
-
-    x, y, z = r
-    distance_au = np.sqrt(x**2 + y**2 + z**2) / pk.AU
+    x, y, z = pv.position
+    distance_au = np.sqrt(x**2 + y**2 + z**2) / AU_TO_M
     longitude_rad = np.arctan2(y, x)
 
     return distance_au, longitude_rad
 
 
-def compute_orbit_rotation(body_data, planet_lon, planet_r_au):
-    a = (body_data["aphelion"] + body_data["perihelion"]) / 2
-    e = compute_eccentricity(body_data["aphelion"], body_data["perihelion"])
+def compute_orbit_rotation(body, planet_lon, planet_r_au):
+    a = (body.aphelion_km + body.perihelion_km) / 2
+    e = body.eccentricity
     if e < 1e-10:
         return planet_lon
     planet_r_km = planet_r_au * AU_TO_KM
@@ -57,27 +63,27 @@ def compute_orbit_rotation(body_data, planet_lon, planet_r_au):
     return planet_lon - nu
 
 
-def plot_orbit(ax, body_data, rotation=0):
+def plot_orbit(ax, body, rotation=0):
     """Plot a full elliptical orbit for a celestial body.
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
         The axes to plot on.
-    body_data : dict
-        Body data with 'aphelion', 'perihelion', and 'englishName' fields.
+    body : Body
+        Body object with aphelion_km, perihelion_km, and english_name.
     rotation : float, optional
         Rotation angle in radians (default: 0).
     """
-    a = (body_data["aphelion"] + body_data["perihelion"]) / 2
-    e = compute_eccentricity(body_data["aphelion"], body_data["perihelion"])
+    a = (body.aphelion_km + body.perihelion_km) / 2
+    e = body.eccentricity
     theta = np.linspace(0, 2 * np.pi, 1000)
     r = (a * (1 - e**2)) / (1 + e * np.cos(theta))
     ax.plot(
         r * np.cos(theta + rotation) / AU_TO_KM,
         r * np.sin(theta + rotation) / AU_TO_KM,
         linewidth=1.5,
-        label=f"Orbit for {body_data['englishName']}",
+        label=f"Orbit for {body.english_name}",
     )
 
     arrow_theta = np.pi / 3

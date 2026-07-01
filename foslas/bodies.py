@@ -1,6 +1,29 @@
+from dataclasses import dataclass
+from typing import Tuple
+
 import numpy as np
 
 from .constants import GM_SUN, AU_TO_M, AU_TO_KM
+
+
+@dataclass
+class Body:
+    id: str
+    english_name: str
+    aphelion_km: float
+    perihelion_km: float
+    aliases: Tuple[str, ...] = ()
+
+    @property
+    def semimajor_axis_km(self):
+        return (self.aphelion_km + self.perihelion_km) / 2
+
+    @property
+    def eccentricity(self):
+        denom = self.aphelion_km + self.perihelion_km
+        return (self.aphelion_km - self.perihelion_km) / denom if denom > 0 else 0.0
+
+
 from .math_utils import solve_kepler, true_anomaly_from_eccentric_anomaly
 
 ASTEROID_CATALOG = {
@@ -195,8 +218,8 @@ def load_asteroid_body(asteroid_id):
 
     Returns
     -------
-    dict
-        Body data dictionary with aphelion, perihelion, etc.
+    Body or None
+        Body object, or None if not found.
     """
     if asteroid_id not in ASTEROID_CATALOG:
         return None
@@ -207,16 +230,12 @@ def load_asteroid_body(asteroid_id):
     aphelion_au = a_au * (1 + ecc)
     perihelion_au = a_au * (1 - ecc)
 
-    return {
-        "id": asteroid_id,
-        "englishName": ast["englishName"],
-        "semimajorAxis": a_au * AU_TO_KM,
-        "eccentricity": ecc,
-        "aphelion": aphelion_au * AU_TO_KM,
-        "perihelion": perihelion_au * AU_TO_KM,
-        "apogee": aphelion_au * AU_TO_KM,
-        "perigee": perihelion_au * AU_TO_KM,
-    }
+    return Body(
+        id=asteroid_id,
+        english_name=ast["englishName"],
+        aphelion_km=aphelion_au * AU_TO_KM,
+        perihelion_km=perihelion_au * AU_TO_KM,
+    )
 
 
 def load_planet_bodies(day_offset=0):
@@ -229,8 +248,8 @@ def load_planet_bodies(day_offset=0):
 
     Returns
     -------
-    list of dict
-        List of body data dictionaries.
+    list of Body
+        List of Body objects.
     """
     try:
         import astropy.units as u
@@ -272,17 +291,13 @@ def load_planet_bodies(day_offset=0):
             aphelion = sma_km * (1.0 + ecc)
             perihelion = sma_km * (1.0 - ecc)
             bodies.append(
-                {
-                    "id": body_id,
-                    "englishName": english_name,
-                    "aliases": aliases,
-                    "semimajorAxis": sma_km,
-                    "eccentricity": ecc,
-                    "aphelion": aphelion,
-                    "perihelion": perihelion,
-                    "apogee": aphelion,
-                    "perigee": perihelion,
-                }
+                Body(
+                    id=body_id,
+                    english_name=english_name,
+                    aphelion_km=aphelion,
+                    perihelion_km=perihelion,
+                    aliases=tuple(aliases),
+                )
             )
         except Exception:
             continue

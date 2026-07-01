@@ -4,14 +4,36 @@ Provides the main entry point for computing transfer trajectories,
 coordinating between Hohmann and fast Lambert-based transfers.
 """
 
-import numpy as np
-
-from ..constants import AU_TO_M, HOHMANN_DV_TOLERANCE
-from ..integrator import integrate_trajectory
-from .base import compute_r2_actual, hohmann_tof
-from .base import OrbitalBody, transfer_time
-from .hohmann import hohmann_delta_v, hohmann_trajectory
+from ..constants import KM_TO_M
+from .base import OrbitalBody, OrbitGeometry
 from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, search_transfer_ecliptic
+from .hohmann import hohmann_delta_v
+from .porkchop import TransferTrajectory
+from .strategy import TransferStrategy, HohmannTransfer, FastLambertTransfer
+
+
+def transfer_time(r1, r2, factor):
+    """Compute transfer time for a scaled transfer orbit.
+
+    Parameters
+    ----------
+    r1 : float
+        Radius of departure orbit in meters.
+    r2 : float
+        Radius of arrival orbit in meters.
+    factor : float
+        Energy factor scaling the semi-major axis (1.0 = Hohmann).
+
+    Returns
+    -------
+    float
+        Transfer time in days.
+    """
+    r1_km = r1 / KM_TO_M
+    r2_km = r2 / KM_TO_M
+    dep = OrbitalBody(r1_km, r1_km)
+    arr = OrbitalBody(r2_km, r2_km)
+    return dep.transfer_time_to(arr, factor)
 
 
 __all__ = [
@@ -20,10 +42,15 @@ __all__ = [
     "transfer_time",
     "find_factor_for_dv",
     "OrbitalBody",
+    "OrbitGeometry",
     "hohmann_trajectory",
     "calc_dv_for_factor",
     "search_transfer",
     "search_transfer_ecliptic",
+    "TransferTrajectory",
+    "TransferStrategy",
+    "HohmannTransfer",
+    "FastLambertTransfer",
 ]
 
 
@@ -64,47 +91,27 @@ def compute_transfer_trajectory(
 
     Returns
     -------
-    tuple
-        (x, y, dep_burn, arr_burn, dnu, tof) where x, y are trajectory
-        coordinates in AU, dep_burn and arr_burn are burn points in AU,
-        dnu is the arrival true anomaly, and tof is the transfer time in seconds.
+    TransferTrajectory
+        The computed transfer trajectory with x, y, dep_burn, arr_burn, dnu, tof fields.
+    float
+        Hohmann transfer time in seconds.
     """
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
-    ht = hohmann_tof(r1, r2)
 
-    # Fast-path: use Hohmann trajectory when DV budget is close to Hohmann
-    # ( eccentricity gate removed: Hohmann is a reasonable approximation for
-    #  small eccentricities, and real planets have ecc 0.01-0.2 which never
-    #  satisfied the previous 1e-10 threshold, causing unnecessary brute-force )
-    if abs(target_dv - dv_total_h) < HOHMANN_DV_TOLERANCE:
-        x, y = hohmann_trajectory(r1, r2, points)
-        return (
-            x,
-            y,
-            np.array([r1 / AU_TO_M, 0.0]),
-            np.array([-r2 / AU_TO_M, 0.0]),
-            np.pi,
-            ht,
-        )
+    dep = OrbitalBody(r1 / KM_TO_M, r1 / KM_TO_M, eccentricity=dep_ecc)
+    arr = OrbitalBody(r2 / KM_TO_M, r2 / KM_TO_M, eccentricity=target_ecc)
 
-    best, _ = search_transfer(
-        r1, r2, target_dv, points, target_ecc, target_rot, dep_ecc, dep_rot
-    )
+    if abs(target_dv - dv_total_h) < 1.0:
+        strategy = HohmannTransfer()
+    else:
+        strategy = FastLambertTransfer()
 
-    if best is None:
-        from .fast import _hohmann_fallback
-        return _hohmann_fallback(r1, r2, points, target_ecc, target_rot)
-
-    tof, dnu, v1, r1_vec, r2_actual = best
-    positions, _ = integrate_trajectory(r1_vec, v1, tof, points)
-
-    x = positions[:, 0] / AU_TO_M
-    y = positions[:, 1] / AU_TO_M
-    dep_nu = -dep_rot
-    r1_actual = compute_r2_actual(r1, dep_ecc, dep_nu)
-    dep_burn = np.array([r1_actual / AU_TO_M, 0.0])
-    arr_burn = np.array(
-        [r2_actual * np.cos(dnu) / AU_TO_M, r2_actual * np.sin(dnu) / AU_TO_M]
-    )
-
-    return x, y, dep_burn, arr_burn, dnu, tof
+    kwargs = {
+        "points": points,
+        "target_ecc": target_ecc,
+        "target_rot": target_rot,
+        "dep_ecc": dep_ecc,
+        "dep_rot": dep_rot,
+    }
+    result, ht = strategy.compute(dep, arr, target_dv, **kwargs)
+    return result, ht

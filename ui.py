@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from foslas.constants import KM_TO_M
 from foslas.bodies import load_planet_bodies
-from foslas.transfers.base import OrbitalBody, transfer_time
+from foslas.transfers.base import OrbitalBody
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
 from foslas.utils import (
@@ -76,11 +76,11 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
     if not end:
         raise ValueError(f"Body '{end_name}' not found.")
 
-    start_ob = OrbitalBody(start["aphelion"], start["perihelion"])
-    end_ob = OrbitalBody(end["aphelion"], end["perihelion"])
+    start_ob = OrbitalBody(start.aphelion_km, start.perihelion_km)
+    end_ob = OrbitalBody(end.aphelion_km, end.perihelion_km)
 
     dv_dep, dv_arr, total_hohmann = hohmann_delta_v(start_ob.sma, end_ob.sma)
-    hohmann_tof = transfer_time(start_ob.sma, end_ob.sma, 1.0)
+    hohmann_tof = start_ob.transfer_time_to(end_ob, factor=1.0)
 
     dep_ecc, dep_rot = orbit_params(start, day_offset)
     arr_ecc, arr_rot = orbit_params(end, day_offset)
@@ -96,7 +96,7 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
         arr_ecc=arr_ecc,
         arr_rot=arr_rot,
     )
-    fast_tof = transfer_time(start_ob.sma, end_ob.sma, fast_factor)
+    fast_tof = start_ob.transfer_time_to(end_ob, factor=fast_factor)
 
     stats = {
         "hohmann_dv": total_hohmann / 1000,
@@ -135,7 +135,7 @@ def compute_transfer(start_name, end_name, dv_km_s, day_offset):
     )
     stats_text = (
         f'<p style="font-weight:600;color:#e5e7eb;margin:0 0 4px 0;">'
-        f"Transfer: {start['englishName']} → {end['englishName']}"
+        f'Transfer: {start.english_name} → {end.english_name}'
         f" <span style='font-weight:400;color:#9ca3af;'>(departure: {dep_date_str})</span></p>"
         f'<p style="font-size:0.85em;color:#9ca3af;margin:0 0 8px 0;">Hohmann Transfer (minimum energy)</p>'
         f"{hohmann_row}"

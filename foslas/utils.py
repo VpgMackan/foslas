@@ -3,8 +3,7 @@
 Provides common functions used by the UI module.
 """
 
-from .bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG
-from .transfers.base import compute_eccentricity
+from .bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG, Body
 
 
 def find_body(bodies, body_id):
@@ -12,15 +11,15 @@ def find_body(bodies, body_id):
 
     Parameters
     ----------
-    bodies : list of dict
-        List of body data dictionaries.
+    bodies : list of Body
+        List of Body objects.
     body_id : str
         The body ID to search for.
 
     Returns
     -------
-    dict or None
-        The body data dictionary, or None if not found.
+    Body or None
+        The Body object, or None if not found.
     """
     body_id = body_id.strip().lower()
     return next(
@@ -29,9 +28,9 @@ def find_body(bodies, body_id):
             for b in bodies
             if body_id
             in {
-                b.get("id", "").lower(),
-                b.get("englishName", "").lower(),
-                *[a.lower() for a in b.get("aliases", [])],
+                b.id.lower(),
+                b.english_name.lower(),
+                *[a.lower() for a in b.aliases],
             }
         ),
         None,
@@ -48,8 +47,8 @@ def find_asteroid(body_id):
 
     Returns
     -------
-    dict or None
-        The asteroid body data, or None if not found.
+    Body or None
+        The asteroid Body object, or None if not found.
     """
     body_id_lower = body_id.strip().lower()
     for aid, data in ASTEROID_CATALOG.items():
@@ -61,7 +60,7 @@ def find_asteroid(body_id):
 
 
 def resolve_bodies(start_id, end_id):
-    """Resolve body IDs to OrbitalBody objects.
+    """Resolve body IDs to Body objects.
 
     Parameters
     ----------
@@ -73,7 +72,7 @@ def resolve_bodies(start_id, end_id):
     Returns
     -------
     tuple
-        (start_data, end_data, start_ob, end_ob) where data are dicts
+        (start_data, end_data, start_ob, end_ob) where data are Body objects
         and ob are OrbitalBody objects.
     """
     from .transfers.base import OrbitalBody
@@ -94,8 +93,8 @@ def resolve_bodies(start_id, end_id):
         raise ValueError(f"Body '{end_id}' not found.")
 
     try:
-        start_ob = OrbitalBody(start["aphelion"], start["perihelion"])
-        end_ob = OrbitalBody(end["aphelion"], end["perihelion"])
+        start_ob = OrbitalBody(start.aphelion_km, start.perihelion_km)
+        end_ob = OrbitalBody(end.aphelion_km, end.perihelion_km)
     except ValueError:
         raise ValueError("Invalid orbit parameters for the selected bodies.")
 
@@ -103,13 +102,13 @@ def resolve_bodies(start_id, end_id):
 
 
 def resolve_body_data(body_id, bodies=None):
-    """Resolve a body ID to its data dict (checks asteroids then planets).
+    """Resolve a body ID to its Body object (checks asteroids then planets).
     
     Parameters
     ----------
     body_id : str
         Body ID to resolve.
-    bodies : list of dict, optional
+    bodies : list of Body, optional
         Pre-loaded bodies list. If None, fetches from load_planet_bodies().
     """
     if bodies is None:
@@ -125,8 +124,8 @@ def orbit_params(body, day_offset=0):
 
     Parameters
     ----------
-    body : dict
-        Body data dictionary with aphelion, perihelion, englishName.
+    body : Body
+        Body object with aphelion_km, perihelion_km, english_name.
     day_offset : int, optional
         Days offset from current time (default: 0).
 
@@ -137,10 +136,8 @@ def orbit_params(body, day_offset=0):
     """
     from .transfers.visualization import get_body_ecliptic, compute_orbit_rotation
 
-    ecc = compute_eccentricity(
-        body.get("aphelion", 0), body.get("perihelion", 0)
-    )
-    r_au, lon = get_body_ecliptic(body["englishName"], time_offset_days=day_offset)
+    ecc = body.eccentricity
+    r_au, lon = get_body_ecliptic(body.english_name, time_offset_days=day_offset)
     rotation = compute_orbit_rotation(body, lon, r_au)
     return ecc, rotation - lon
 

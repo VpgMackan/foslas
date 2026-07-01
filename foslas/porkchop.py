@@ -49,6 +49,15 @@ def _make_pykep_planet(name):
     return pk.planet(pk.udpla.jpl_lp(name))
 
 
+class PykepEphemerisProvider:
+    """Pykep-based ephemeris provider for use with EphemerisProvider interface."""
+
+    def position_velocity(self, body_name: str, epoch):
+        planet = _make_pykep_planet(body_name)
+        r, v = planet.eph(epoch)
+        return np.array(r), np.array(v)
+
+
 def _date_to_epoch(dt):
     jd = dt.timestamp() / 86400.0 + JD_EPOCH_OFFSET
     return pk.epoch(jd - J2000_JD)
@@ -80,6 +89,16 @@ class LambertTrajectory:
     arr_r: np.ndarray
     dep_v: np.ndarray
     arr_v: np.ndarray
+
+
+@dataclass
+class TransferTrajectory:
+    x: np.ndarray
+    y: np.ndarray
+    dep_burn: np.ndarray
+    arr_burn: np.ndarray
+    dnu: float
+    tof: float
 
 
 def _compute_row(dep_body, arr_body, t_launch_mjd2000, tof_days):
