@@ -8,7 +8,7 @@ from ..constants import KM_TO_M
 from .base import OrbitalBody, OrbitGeometry
 from .fast import find_factor_for_dv, calc_dv_for_factor, search_transfer, search_transfer_ecliptic
 from .hohmann import hohmann_delta_v
-from .porkchop import TransferTrajectory
+from ..porkchop import TransferTrajectory
 from .strategy import TransferStrategy, HohmannTransfer, FastLambertTransfer
 
 

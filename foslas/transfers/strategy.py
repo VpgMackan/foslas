@@ -11,7 +11,7 @@ import numpy as np
 from ..constants import AU_TO_M
 from .base import OrbitalBody, OrbitGeometry
 from .fast import search_transfer
-from .porkchop import TransferTrajectory
+from ..porkchop import TransferTrajectory
 
 
 class TransferStrategy(ABC):
