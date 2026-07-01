@@ -10,6 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from foslas.constants import KM_TO_M
+from foslas.bodies import load_planet_bodies
 from foslas.transfers.base import OrbitalBody, transfer_time
 from foslas.transfers.hohmann import hohmann_delta_v
 from foslas.transfers.fast import find_factor_for_dv
@@ -64,12 +65,11 @@ BODY_IDS = [name.lower().replace(" ", "_") for name in BODIES]
 
 
 def compute_transfer(start_name, end_name, dv_km_s, day_offset):
-    from foslas.bodies import load_planet_bodies
     from foslas.transfers.visualization import visualize
 
     bodies = load_planet_bodies(day_offset)
-    start = resolve_body_data(start_name)
-    end = resolve_body_data(end_name)
+    start = resolve_body_data(start_name, bodies)
+    end = resolve_body_data(end_name, bodies)
 
     if not start:
         raise ValueError(f"Body '{start_name}' not found.")
@@ -166,6 +166,8 @@ def run_porkchop_generate(
         plot_lambert_trajectory,
     )
 
+    bodies = load_planet_bodies()
+
     try:
         sd = datetime.strptime(start_date, "%Y-%m-%d") if start_date else None
         dv = float(dv_budget) if dv_budget else None
@@ -243,8 +245,8 @@ def run_porkchop_generate(
                 start, end, launch_date, tof_days_selected
             )
 
-            dep_data = resolve_body_data(start)
-            arr_data = resolve_body_data(end)
+            dep_data = resolve_body_data(start, bodies)
+            arr_data = resolve_body_data(end, bodies)
 
             if dep_data is None or arr_data is None:
                 transfer_stats = '<p style="color:#ef4444;">Could not resolve body data for plotting.</p>'

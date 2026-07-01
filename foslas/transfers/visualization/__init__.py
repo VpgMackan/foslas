@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ..hohmann import hohmann_delta_v
-from ..fast import search_transfer_ecliptic
 from .. import compute_transfer_trajectory
 from ..base import compute_eccentricity
 from .core import (
@@ -19,7 +18,6 @@ from .core import (
     compute_orbit_rotation,
     plot_orbit,
     plot_transfer,
-    propagate_orbit_position,
 )
 
 __all__ = [
@@ -28,7 +26,6 @@ __all__ = [
     "plot_transfer",
     "get_body_ecliptic",
     "compute_orbit_rotation",
-    "propagate_orbit_position",
 ]
 
 
@@ -111,16 +108,16 @@ def visualize(r1, r2, target_dv, bodies_data, stats=None):
     fast_tof_s = None
     if target_dv > hohmann_dv + 1.0:
         try:
-            result = search_transfer_ecliptic(
-                bodies_data[0]["englishName"],
-                bodies_data[1]["englishName"],
+            x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s = compute_transfer_trajectory(
+                dep_sma_m,
+                arr_sma_m,
                 target_dv,
-                500,
+                points=500,
+                target_ecc=e_end,
+                target_rot=arr_rotation - dep_lon,
+                dep_ecc=dep_ecc,
+                dep_rot=dep_rotation - dep_lon,
             )
-            if result is not None:
-                (x_f, y_f, dep_f, arr_f, nu_f, fast_tof_s), _ = result
-            else:
-                fast_tof_s = None
         except Exception:
             fast_tof_s = None
 

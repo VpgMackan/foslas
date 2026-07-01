@@ -15,195 +15,19 @@ Find:
 - Velocity vector **v₁** at departure
 - Velocity vector **v₂** at arrival
 
-## Universal Variable Formulation
-
-foslas solves Lambert's problem using the universal variable formulation with Stumpff functions. This approach works for all conic sections (elliptical, parabolic, hyperbolic) without separate equations for each case.
-
-### Geometry
-
-First, we compute the geometric parameters:
-
-1. **Magnitudes:**
-   ```
-   r₁ = |r₁|
-   r₂ = |r₂|
-   ```
-
-2. **True anomaly change (Δν):**
-   ```
-   cos(Δν) = (r₁ · r₂) / (r₁ × r₂)
-   ```
-   
-   The cross product determines the direction (prograde vs retrograde):
-   ```
-   if (r₁ × r₂)_z ≥ 0:
-       Δν = arccos(cos(Δν))
-   else:
-       Δν = 2π - arccos(cos(Δν))
-   ```
-
-3. **Geometry constant A:**
-   ```
-   A = sin(Δν) × √(r₁ × r₂ / (1 - cos(Δν)))
-   ```
-
-### Stumpff Functions
-
-Stumpff functions `C(z)` and `S(z)` are special functions that unify the equations for all conic sections. They depend on a universal variable `z`:
-
-**For z > 0 (elliptical):**
-```
-C(z) = (1 - cos(√z)) / z
-S(z) = (√z - sin(√z)) / z^(3/2)
-```
-
-**For z ≈ 0 (parabolic):**
-```
-C(z) ≈ 1/2
-S(z) ≈ 1/6
-```
-
-**For z < 0 (hyperbolic):**
-```
-C(z) = (cosh(√(-z)) - 1) / (-z)
-S(z) = (sinh(√(-z)) - √(-z)) / (-z)^(3/2)
-```
-
-### Time of Flight Equation
-
-The time of flight is related to `z` through:
-
-```
-y = r₁ + r₂ + A × (z × S(z) - 1) / √C(z)
-
-x = √(y / C(z))
-
-t = (x³ × S(z) + A × √y) / √μ
-```
-
-where `μ = GM_SUN` is the gravitational parameter.
-
-### Solving for z
-
-We need to find `z` such that `t(z) = tof`. This is a root-finding problem:
-
-```
-f(z) = t(z) - tof = 0
-```
-
-**Initial search interval:**
-- Try `z ∈ [-2, 4]` with Brent's method (`brentq`)
-
-**Fallback scan:**
-If the initial search fails, scan 200 points across:
-- `z ∈ [0.01, 4π²]` (elliptical solutions)
-- `z ∈ [-4π², -0.01]` (hyperbolic solutions)
-
-Look for sign changes in the residual, then refine with `brentq`.
-
-### Computing Velocities
-
-Once `z` is found, compute the Lagrange coefficients:
-
-```
-f = 1 - y / r₁
-g = A × √(y / μ)
-ġ = 1 - y / r₂
-```
-
-The velocity vectors are:
-
-```
-v₁ = (r₂ - f × r₁) / g
-v₂ = (ġ × r₂ - r₁) / g
-```
-
 ## Implementation
 
-### Stumpff Functions
-
-```python
-def stumpff_C(z):
-    if abs(z) < 1e-6:
-        return 0.5
-    elif z > 0:
-        return (1 - np.cos(np.sqrt(z))) / z
-    else:
-        return (np.cosh(np.sqrt(-z)) - 1) / (-z)
-
-def stumpff_S(z):
-    if abs(z) < 1e-6:
-        return 1.0 / 6.0
-    elif z > 0:
-        sz = np.sqrt(z)
-        return (sz - np.sin(sz)) / (sz ** 3)
-    else:
-        sz = np.sqrt(-z)
-        return (np.sinh(sz) - sz) / ((-z) ** 1.5)
-```
-
-### Vectorized Versions
-
-For batch scanning, vectorized versions operate on numpy arrays:
-
-```python
-def _stumpff_C_vec(z):
-    result = np.empty_like(z)
-    small = np.abs(z) < 1e-6
-    pos = (z > 0) & ~small
-    neg = (z < 0) & ~small
-    
-    result[small] = 0.5
-    result[pos] = (1 - np.cos(np.sqrt(z[pos]))) / z[pos]
-    result[neg] = (np.cosh(np.sqrt(-z[neg])) - 1) / (-z[neg])
-    return result
-```
-
-### Main Solver
+foslas delegates Lambert's problem solving to [pykep](https://github.com/esa/pykep), a library for astrodynamics and orbit calculations. The `lambert_solve` function in `foslas/lambert.py` is a thin wrapper that calls `pk.lambert_problem`:
 
 ```python
 def lambert_solve(r1_vec, r2_vec, tof, mu=GM_SUN):
-    # Compute geometry
-    r1_mag = np.sqrt(np.sum(r1_vec**2))
-    r2_mag = np.sqrt(np.sum(r2_vec**2))
-    
-    cos_dnu = np.clip(np.dot(r1_vec, r2_vec) / (r1_mag * r2_mag), -1.0, 1.0)
-    cross = np.cross(r1_vec, r2_vec)
-    dnu = np.arccos(cos_dnu) if cross[2] >= 0 else 2 * np.pi - np.arccos(cos_dnu)
-    
-    A = np.sin(dnu) * np.sqrt(r1_mag * r2_mag / (1 - cos_dnu))
-    
-    # Time of flight residual
-    def tof_residual(z):
-        C = stumpff_C(z)
-        S = stumpff_S(z)
-        denom = np.sqrt(C)
-        if denom < 1e-30:
-            return 1e20
-        y = r1_mag + r2_mag + A * (z * S - 1) / denom
-        if y < 0:
-            return 1e20
-        x = np.sqrt(y / C)
-        t = (x ** 3 * S + A * np.sqrt(y)) / np.sqrt(mu)
-        return t - tof
-    
-    # Find z
-    z = brentq(tof_residual, -2.0, 4.0, xtol=1e-12, rtol=1e-12)
-    
-    # Compute velocities
-    C = stumpff_C(z)
-    S = stumpff_S(z)
-    y = r1_mag + r2_mag + A * (z * S - 1) / np.sqrt(C)
-    
-    f = 1 - y / r1_mag
-    g = A * np.sqrt(y / mu)
-    g_dot = 1 - y / r2_mag
-    
-    v1 = (r2_vec - f * r1_vec) / g
-    v2 = (g_dot * r2_vec - r1_vec) / g
-    
+    lp = pk.lambert_problem(r1_vec, r2_vec, tof, mu)
+    v1 = np.array(lp.v0[0])
+    v2 = np.array(lp.v1[0])
     return v1, v2
 ```
+
+pykep's implementation uses a robust numerical solver that handles all conic sections (elliptical, parabolic, hyperbolic) without requiring separate equations for each case.
 
 ## Transfer Search Algorithm
 
@@ -252,10 +76,7 @@ The search returns the **fastest** valid transfer (lowest time of flight) that f
 
 The Lambert solver handles several edge cases:
 
-1. **Denominator near zero:** If `√C(z) < 1e-30`, return large residual
-2. **Negative y:** If `y < 0`, return large residual (invalid geometry)
-3. **No solution:** If no sign change found in scan, raise `ValueError`
-4. **Fallback:** If Lambert fails, fall back to Hohmann trajectory
+1. **No solution found:** If no valid transfer is found within the search space, the solver falls back to a Hohmann trajectory.
 
 ## References
 

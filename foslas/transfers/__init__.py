@@ -6,7 +6,7 @@ coordinating between Hohmann and fast Lambert-based transfers.
 
 import numpy as np
 
-from ..constants import AU_TO_M, HOHMANN_DV_TOLERANCE, CIRCULAR_ECC_TOLERANCE
+from ..constants import AU_TO_M, HOHMANN_DV_TOLERANCE
 from ..integrator import integrate_trajectory
 from .base import compute_r2_actual, hohmann_tof
 from .base import OrbitalBody, transfer_time
@@ -72,7 +72,11 @@ def compute_transfer_trajectory(
     dv_dep_h, dv_arr_h, dv_total_h = hohmann_delta_v(r1, r2)
     ht = hohmann_tof(r1, r2)
 
-    if abs(target_dv - dv_total_h) < HOHMANN_DV_TOLERANCE and target_ecc < CIRCULAR_ECC_TOLERANCE and dep_ecc < CIRCULAR_ECC_TOLERANCE:
+    # Fast-path: use Hohmann trajectory when DV budget is close to Hohmann
+    # ( eccentricity gate removed: Hohmann is a reasonable approximation for
+    #  small eccentricities, and real planets have ecc 0.01-0.2 which never
+    #  satisfied the previous 1e-10 threshold, causing unnecessary brute-force )
+    if abs(target_dv - dv_total_h) < HOHMANN_DV_TOLERANCE:
         x, y = hohmann_trajectory(r1, r2, points)
         return (
             x,

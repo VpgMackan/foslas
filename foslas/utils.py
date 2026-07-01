@@ -4,12 +4,7 @@ Provides common functions used by the UI module.
 """
 
 from .bodies import load_planet_bodies, load_asteroid_body, ASTEROID_CATALOG
-
-
-def compute_eccentricity(aphelion, perihelion):
-    """Compute orbital eccentricity from aphelion and perihelion distances."""
-    denom = aphelion + perihelion
-    return (aphelion - perihelion) / denom if denom > 0 else 0.0
+from .transfers.base import compute_eccentricity
 
 
 def find_body(bodies, body_id):
@@ -107,9 +102,18 @@ def resolve_bodies(start_id, end_id):
     return start, end, start_ob, end_ob
 
 
-def resolve_body_data(body_id):
-    """Resolve a body ID to its data dict (checks asteroids then planets)."""
-    bodies = load_planet_bodies()
+def resolve_body_data(body_id, bodies=None):
+    """Resolve a body ID to its data dict (checks asteroids then planets).
+    
+    Parameters
+    ----------
+    body_id : str
+        Body ID to resolve.
+    bodies : list of dict, optional
+        Pre-loaded bodies list. If None, fetches from load_planet_bodies().
+    """
+    if bodies is None:
+        bodies = load_planet_bodies()
     bd = find_asteroid(body_id)
     if bd is None:
         bd = find_body(bodies, body_id)
@@ -142,7 +146,6 @@ def orbit_params(body, day_offset=0):
 
 
 __all__ = [
-    "compute_eccentricity",
     "find_body",
     "find_asteroid",
     "resolve_bodies",

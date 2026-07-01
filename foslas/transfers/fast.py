@@ -13,7 +13,7 @@ from ..constants import GM_SUN, AU_TO_M
 from ..lambert import lambert_solve
 from .base import compute_r2_actual, planet_velocity, hohmann_tof as _hohmann_tof
 
-from .hohmann import hohmann_delta_v
+from .hohmann import hohmann_delta_v, hohmann_trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -270,3 +270,20 @@ def search_transfer(
         )
 
     return best, ht
+
+
+def _hohmann_fallback(r1, r2, points, target_ecc, target_rot):
+    """Fallback to Hohmann trajectory when search_transfer fails.
+
+    Returns the same 6-tuple shape as compute_transfer_trajectory.
+    """
+    x, y = hohmann_trajectory(r1, r2, points)
+    ht = _hohmann_tof(r1, r2)
+    return (
+        x,
+        y,
+        np.array([r1 / AU_TO_M, 0.0]),
+        np.array([-r2 / AU_TO_M, 0.0]),
+        np.pi,
+        ht,
+    )
